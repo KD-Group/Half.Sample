@@ -1,10 +1,10 @@
 import setuptools
 
 setuptools.setup(
-    name="sample-kd",
-    version="0.1.9",
-    author="Jefung",
-    author_email="jefung865424525@gmail.com",
+    name="half-sample",
+    version="0.1.0",
+    author="kunde",
+    author_email="gzkunde@163.com",
     description="sample data and analysis",
     long_description="",
     url="https://github.com/KD-Group/Half.Sample",

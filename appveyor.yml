@@ -26,8 +26,6 @@ build_script:
 
 deploy_script:
   - "echo [pypi] > %USERPROFILE%\\.pypirc"
-  - "echo username: Jefung >> %USERPROFILE%\\.pypirc"
-  - "echo password: %PYPIPASSWORD% >> %USERPROFILE%\\.pypirc"
+  - "echo username = __token__ >> %USERPROFILE%\\.pypirc"
+  - "echo password = %PYPIPASSWORD% >> %USERPROFILE%\\.pypirc"
   - if "%APPVEYOR_REPO_TAG%"=="true" ( twine upload dist/* ) else ( echo "Not deploying because not a tagged commit." )
-
-

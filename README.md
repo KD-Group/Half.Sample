@@ -1,7 +1,6 @@
 # Half.Sample
 
-[![Build Status](https://travis-ci.com/KD-Group/Half.Sample.svg?branch=master)](https://travis-ci.com/KD-Group/Half.Sample)
-[![Build status](https://ci.appveyor.com/api/projects/status/qry88i7n75txreu9/branch/master?svg=true)](https://ci.appveyor.com/project/SF-Zhou/half-sample/branch/master)
+[![Build status](https://ci.appveyor.com/api/projects/status/04ox7guybqotu67d?svg=true)](https://ci.appveyor.com/project/Wingsgo/half-sample)
 
 Sample, C++ Program in Half Application with Python Module
 
