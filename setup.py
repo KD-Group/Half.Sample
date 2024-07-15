@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="sample-kd",
-    version="0.1.8",
+    version="0.1.9",
     author="Jefung",
     author_email="jefung865424525@gmail.com",
     description="sample data and analysis",
