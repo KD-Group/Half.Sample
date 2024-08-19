@@ -21,6 +21,8 @@ class Result:
         self.measuring = False
         self.success = False
 
+        self.with_magnetic = False
+
         self.sampling_interval = 0.0  # us
         self.wave_interval = 0.0   # us
         self.wave = []
