@@ -21,8 +21,6 @@ class Result:
         self.measuring = False
         self.success = False
 
-        self.with_magnetic = False
-
         self.sampling_interval = 0.0  # us
         self.wave_interval = 0.0   # us
         self.wave = []
@@ -30,6 +28,7 @@ class Result:
         self.estimate = []
 
         self.tau = 0.0
+        self.tau_b = 0.0
         self.w = 0.0
         self.b = 0.0
         self.loss = 0.0
