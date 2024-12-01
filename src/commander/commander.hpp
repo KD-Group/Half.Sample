@@ -5,7 +5,7 @@
 
 namespace Commander {
 
-void exec();
+    void exec();
 
 } // namespace Commander
 

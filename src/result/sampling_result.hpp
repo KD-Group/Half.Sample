@@ -7,17 +7,17 @@
 
 namespace Result {
 
-struct SamplingResult {
-    double buffer[Constant::MaxBufferSize];
-    double wave[Constant::MaxBufferSize / 16];
+    struct SamplingResult {
+        double buffer[Constant::MaxBufferSize]{};
+        double wave[Constant::MaxBufferSize / 16]{};
 
-    double maximum, minimum;
-    Estimate::EstimatedResult estimate;
+        double maximum{}, minimum{};
+        Estimate::EstimatedResult estimate;
 
-    bool success;
-    bool measuring;
-    Error::Code error_code;
-};
+        bool success{};
+        bool measuring{};
+        Error::Code error_code = Error::Code::SUCCESS;
+    };
 
 } // namespace Result;
 

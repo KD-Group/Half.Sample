@@ -12,6 +12,7 @@ namespace Error {
         COMMAND_NOT_FOUND,
         SAMPLER_NOT_FOUND,
         NOW_IN_MEASURING,
+        FILE_NOT_FOUND,
 
         // error of sampling
         VOLTAGE_NOT_ENOUGH,

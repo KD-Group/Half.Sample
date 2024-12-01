@@ -1,13 +1,15 @@
 #include "measure.hpp"
 #include "base.hpp"
 #include "../global/global.hpp"
-#include "../processer/processer.hpp"
+#include "../processor/processor.hpp"
 
 #ifdef _WIN32
-    #include "Windows.h"
+
+#include "Windows.h"
+
 #else
-    #include <thread>
-    #include <chrono>
+#include <thread>
+#include <chrono>
 #endif
 
 namespace Commander {
@@ -19,13 +21,13 @@ namespace Commander {
             success = Global::sampler->sample(Global::config, Global::result);
             if (!success) break;
 
-            success = Processer::align(Global::config, Global::result);
+            success = Processor::align(Global::config, Global::result);
             if (!success) break;
 
-            success = Processer::summation(Global::config, Global::result);
+            success = Processor::summation(Global::config, Global::result);
             if (!success) break;
 
-            success = Processer::estimate(Global::config, Global::result);
+            success = Processor::estimate(Global::config, Global::result);
             if (!success) break;
         } while (false);
 
@@ -33,11 +35,42 @@ namespace Commander {
     }
 
 #ifdef _WIN32
+
     DWORD WINAPI measure(void *) {
         measure();
         return 0;
     }
+
 #endif
+
+    void async_measure() {
+        int number_of_waveforms;
+        double emitting_frequency;
+        std::string mode;
+        std::cin >> number_of_waveforms;
+        std::cin >> emitting_frequency;
+        std::cin >> mode;
+
+        Global::config.auto_mode = (mode == "True");
+        Global::config.update(number_of_waveforms, emitting_frequency);
+
+        bool &measuring = Global::result.measuring;
+        if (measuring) {
+            Base::error(Error::NOW_IN_MEASURING);
+            return;
+        }
+
+        measuring = true;
+        Base::variable(measuring);
+
+#ifdef _WIN32
+        DWORD handle;
+        CreateThread(NULL, 0, measure, NULL, 0, &handle);
+#else
+        // start a thread to do measure
+        std::thread(measure).detach();
+#endif
+    }
 
     void to_query() {
         bool success = Global::result.success;
@@ -65,8 +98,8 @@ namespace Commander {
 
             printf("wave = [");
             const auto &values = *Global::result.estimate.y;
-            for (int i = 0; i < values.size(); i ++) {
-                printf("%.3f,", values[i]);
+            for (double value: values) {
+                printf("%.3f,", value);
             }
             printf("]\n");
         } else {
@@ -76,37 +109,40 @@ namespace Commander {
     }
 
     void to_measure() {
-        int number_of_waveforms;
-        double emitting_frequency;
-        std::string mode;
-        std::cin >> number_of_waveforms;
-        std::cin >> emitting_frequency;
-        std::cin >> mode;
-
-        Global::config.auto_mode = (mode == "True");
-        Global::config.update(number_of_waveforms, emitting_frequency);
-
-        bool &measuring = Global::result.measuring;
-        if (measuring) {
-            Base::error(Error::NOW_IN_MEASURING);
-            return;
-        }
-
-        measuring = true;
-        Base::variable(measuring);
-
-        #ifdef _WIN32
-            DWORD handle;
-            CreateThread(NULL, 0, measure, NULL, 0, &handle);
-        #else
-            // start a thread to do measure
-            std::thread(measure).detach();
-        #endif
+        Global::config.dump_file_path = "";
+        async_measure();
     }
 
     void is_measuring() {
         bool &measuring = Global::result.measuring;
         Base::variable(measuring);
+    }
+
+    void to_dump() {
+        std::cin >> Global::config.dump_file_path;
+        async_measure();
+    }
+
+    void to_process() {
+        bool &success = Global::result.success;
+        success = true;
+
+        std::cin >> Global::config.dump_file_path;
+        Sampler::Sampler::load_origin_data(Global::config, Global::result);
+        do {
+            if (!success) break;
+
+            success = Processor::align(Global::config, Global::result);
+            if (!success) break;
+
+            success = Processor::summation(Global::config, Global::result);
+            if (!success) break;
+
+            success = Processor::estimate(Global::config, Global::result);
+            if (!success) break;
+        } while (false);
+
+        Global::result.measuring = false;
     }
 
 } // namespace Commander

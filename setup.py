@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="half-sample",
-    version="0.1.2",
+    version="0.1.3",
     author="kunde",
     author_email="gzkunde@163.com",
     description="sample data and analysis",

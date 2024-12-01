@@ -6,6 +6,7 @@
 #include "Windows.h"
 #include "bdaqctrl.h"
 #include "../error/error.hpp"
+#include <fstream>
 using namespace std;
 using namespace Automation::BDaq;
 
@@ -16,7 +17,7 @@ namespace Sampler {
 
 class RealSampler: public Sampler {
     public:
-    virtual bool sample(const Config::SamplingConfig &config, Result::SamplingResult &result) {
+    bool sample(const Config::SamplingConfig &config, Result::SamplingResult &result) override {
         ErrorCode code = Success;
         BufferedAiCtrl *bfdAiCtrl = AdxBufferedAiCtrlCreate();
 
@@ -49,18 +50,21 @@ class RealSampler: public Sampler {
         check_code(code);
 
         bfdAiCtrl->Dispose();
+
+        dump_origin_data(config, result);
+
         return true;
     }
 
-    virtual double get_value(const std::string &key) {
+    double get_value(const std::string &key) override {
         return 0.0;
     }
 
-    virtual bool set_value(const std::string &key, const double value) {
+    bool set_value(const std::string &key, const double value) override {
         return true;
     }
 
-    virtual std::string name() {
+    std::string name() override {
         return "real_sampler";
     }
 };

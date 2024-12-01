@@ -7,10 +7,10 @@
 
 namespace Sampler {
 
-class SamplerFactory {
+    class SamplerFactory {
     public:
-    static SamplerPtr get(std::string sampler_name);
-};
+        static SamplerPtr get(const std::string &sampler_name);
+    };
 
 } // namespace Sampler
 

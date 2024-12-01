@@ -6,7 +6,7 @@
 #include "../result/sampling_result.hpp"
 
 class Global {
-    public:
+public:
     static Sampler::SamplerPtr sampler;
     static Config::SamplingConfig config;
     static Result::SamplingResult result;

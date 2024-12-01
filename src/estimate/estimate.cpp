@@ -4,7 +4,7 @@
 
 namespace Estimate {
 
-    EstimatedResult::EstimatedResult(Waveform wave, double tau): tau(tau), y(wave.values), interval(wave.interval) {
+    EstimatedResult::EstimatedResult(const Waveform& wave, double tau) : tau(tau), y(wave.values), interval(wave.interval) {
         calculate_para();
         calculate_loss();
     };
@@ -15,7 +15,7 @@ namespace Estimate {
         double sum_x = 0, sum_y = 0;
         double sum_xx = 0, sum_xy = 0;
 
-        for (int i = 0; i < m ; i++) {
+        for (int i = 0; i < m; i++) {
             double vx = exp(i * interval / -tau);
             double vy = (*y)[i];
 
@@ -50,7 +50,7 @@ namespace Estimate {
         return maximum - minimum;
     }
 
-    EstimatedResult one_third_search(Waveform wave) {
+    EstimatedResult one_third_search(const Waveform& wave) {
         double l = Constant::MinTauValue / 10, r = Constant::MaxTauValue * 2;  // range of tau
 
         while (l + Constant::SearchEpsilon < r) {
@@ -67,10 +67,10 @@ namespace Estimate {
             }
         }
 
-        return EstimatedResult(wave, (l + r) / 2);
+        return {wave, (l + r) / 2};
     }
 
-    bool is_wave_going_down(Waveform wave) {
+    bool is_wave_going_down(const Waveform& wave) {
         const auto &y = *wave.values;
         int m = y.size();
         int n = m / 3;
@@ -78,7 +78,7 @@ namespace Estimate {
         double sum_x = 0, sum_y = 0;
         double sum_xx = 0, sum_xy = 0;
 
-        for (int i = m - n; i < m ; i++) {
+        for (int i = m - n; i < m; i++) {
             double vx = i;
             double vy = y[i];
 
