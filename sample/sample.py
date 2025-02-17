@@ -56,7 +56,6 @@ class Sampler:
         except Exception as e:
             result.error = True
             result.message = str(e)
-            result.chinese_message = str(e)
             raise self.Error("{}: {}".format(result.message, result.chinese_message))
 
     @property

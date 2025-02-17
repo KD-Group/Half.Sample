@@ -29,12 +29,6 @@ namespace Config {
         sampling_length_per_sample = std::min((int) sampling_frequency, waveform_length * (number_of_waveforms + 1));
         waveforms_per_sample = int(sampling_frequency / waveform_length);
         sampling_time = (number_of_waveforms / waveforms_per_sample) + 1;
-
-        printf("waveform length: %d\n", waveform_length);
-        printf("sampling frequency: %d\n", (int)sampling_frequency);
-        printf("sampling length: %d\n", sampling_length_per_sample);
-        printf("sampling time: %d\n", sampling_time);
-
         int cropped_length = int(Constant::CroppedLength * sampling_frequency / Constant::MaxSamplingFrequency);
         valid_length = waveform_length / 2 - cropped_length;
     }
