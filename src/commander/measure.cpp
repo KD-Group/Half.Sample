@@ -53,6 +53,8 @@ namespace Commander {
 
         Global::config.auto_mode = (mode == "True");
         Global::config.update(number_of_waveforms, emitting_frequency);
+        Global::result.totalSamplingBuffer.resize(Global::config.sampling_length_per_sample * Global::config.sampling_time);
+        Global::result.resultWave.resize(Global::config.valid_length);
 
         bool &measuring = Global::result.measuring;
         if (measuring) {

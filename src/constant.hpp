@@ -2,7 +2,7 @@
 #define CONSTANT_HPP
 
 namespace Constant {
-    const int MaxSamplingFrequency = int(2e7);  // Hz
+    const int MaxSamplingFrequency = int(16e6);  // Hz
     const int MinSamplingFrequency = int(1e6);  // Hz
     const int HighSpeedSamplingThreshold = 10;  // Hz
 

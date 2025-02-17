@@ -4,12 +4,13 @@
 #include "../constant.hpp"
 #include "../error/error.hpp"
 #include "../estimate/estimate.hpp"
+#include <vector>
 
 namespace Result {
 
     struct SamplingResult {
-        double buffer[Constant::MaxBufferSize]{};
-        double wave[Constant::MaxBufferSize / 16]{};
+        std::vector<double> totalSamplingBuffer = std::vector<double>(Constant::MaxBufferSize, 0.0);
+        std::vector<double> resultWave = std::vector<double>(Constant::MaxBufferSize / 16, 0.0);
 
         double maximum{}, minimum{};
         Estimate::EstimatedResult estimate;
