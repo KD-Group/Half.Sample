@@ -42,21 +42,19 @@ class Sampler:
         result = Result()
         try:
             executor = executor or self.p
-
             executor.write_line(command)
             lines = executor.read_until('EOF')
-
             if lines:
                 exec(lines, result.__dict__)
-
-            if result.error:
-                raise self.Error("{}: {}".format(result.message, result.chinese_message))
-
-            return result
         except Exception as e:
             result.error = True
             result.message = str(e)
             raise self.Error("{}: {}".format(result.message, result.chinese_message))
+
+        if result.error:
+            raise self.Error("{}: {}".format(result.message, result.chinese_message))
+
+        return result
 
     @property
     def is_measuring(self) -> bool:

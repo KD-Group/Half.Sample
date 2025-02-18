@@ -66,6 +66,9 @@ namespace Commander {
         add_func_into_mapper(to_dump, mapper);
         add_func_into_mapper(to_process, mapper);
 
+        // Default sampler
+        Global::sampler = Sampler::SamplerFactory::get("mock_sampler");
+
         std::string command;
         while (std::cin >> command) {
             if (mapper.count(command)) {

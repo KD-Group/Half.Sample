@@ -33,7 +33,7 @@ class MyTestCase(unittest.TestCase):
             result = sampler.query()
             diff_ratio = abs(result.tau - mock_tau) / mock_tau
 
-            self.assertTrue(diff_ratio <= 0.1 or diff < 0.5)
+            self.assertTrue(diff_ratio <= 0.1 or diff_ratio < 0.5)
 
     def test_low_frequency(self):
         sampler.set_sampler(sampler_name="mock_sampler")

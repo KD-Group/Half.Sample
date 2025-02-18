@@ -10,7 +10,7 @@ namespace Config {
         double emitting_frequency;  // Hz
         double sampling_interval;  // us
 
-        int waveforms_per_sample; // 采集卡每次采样时能得到的最大波形数量
+        double waveforms_per_sample; // 采集卡每次采样时能得到的最大波形数量，可能采集到部分波形，因此为double类型，例如0.5
         int sampling_time; // 采样次数,当要求的波形数量大于采集卡单次最大采样点数的时，进行多次采样直到能采集到要求的波形
         int sampling_length_per_sample; // 采集卡单次采样点数
         int waveform_length; // 一个完整波形的点数(包括上升沿和下降沿)

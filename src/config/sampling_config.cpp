@@ -1,4 +1,5 @@
 #include "sampling_config.hpp"
+#include "../commander/base.hpp"
 #include "../constant.hpp"
 
 #include <algorithm>
@@ -25,12 +26,18 @@ namespace Config {
         //	sampling_time = (waveforms / waveforms_per_sample) + 1
         //  举一个例子，采集卡一次能拿到完整波形为5，如果波形平均次数为32，那么要采集 (32 / 5) + 1 = 7次
         sampling_interval = 1e6 / sampling_frequency;
+        Commander::Base::variable(sampling_interval);
         waveform_length = int(sampling_frequency / frequency);
+        Commander::Base::variable(waveform_length);
         sampling_length_per_sample = std::min((int) sampling_frequency, waveform_length * (number_of_waveforms + 1));
-        waveforms_per_sample = int(sampling_frequency / waveform_length);
-        sampling_time = (number_of_waveforms / waveforms_per_sample) + 1;
+        Commander::Base::variable(sampling_length_per_sample);
+        waveforms_per_sample = sampling_frequency / waveform_length;
+        Commander::Base::variable(waveforms_per_sample);
+        sampling_time = int(number_of_waveforms / waveforms_per_sample) + 1;
+        Commander::Base::variable(sampling_time);
         int cropped_length = int(Constant::CroppedLength * sampling_frequency / Constant::MaxSamplingFrequency);
         valid_length = waveform_length / 2 - cropped_length;
+        Commander::Base::variable(valid_length);
     }
 
 } // namespace Config
