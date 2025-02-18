@@ -29,15 +29,15 @@ namespace Config {
         Commander::Base::variable(sampling_interval);
         waveform_length = int(sampling_frequency / frequency);
         Commander::Base::variable(waveform_length);
-        sampling_length_per_sample = std::min((int) sampling_frequency, waveform_length * (number_of_waveforms + 1));
+        sampling_length_per_sample = std::min(Constant::MaxSamplingPoints, waveform_length * (number_of_waveforms + 1));
         Commander::Base::variable(sampling_length_per_sample);
-        waveforms_per_sample = sampling_frequency / waveform_length;
+        waveforms_per_sample = std::max(1, sampling_length_per_sample / waveform_length - 1);
         Commander::Base::variable(waveforms_per_sample);
-        sampling_time = int(number_of_waveforms / waveforms_per_sample) + 1;
+        sampling_time = int(number_of_waveforms / waveforms_per_sample);
         Commander::Base::variable(sampling_time);
         int cropped_length = int(Constant::CroppedLength * sampling_frequency / Constant::MaxSamplingFrequency);
         valid_length = waveform_length / 2 - cropped_length;
         Commander::Base::variable(valid_length);
     }
 
-} // namespace Config
+} // namespace Samper

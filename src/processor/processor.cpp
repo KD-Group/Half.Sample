@@ -74,7 +74,7 @@ namespace Commander {
         }
 
         Waveform average(const Config::SamplingConfig &config, Result::SamplingResult &result, const double frequency) {
-            int resultWaveLength = int(config.waveform_length / 2);
+            int resultWaveLength = int(config.sampling_frequency / frequency / 2);
             resultWaveLength = std::min(resultWaveLength, config.valid_length);
 
             int merged_size = resultWaveLength / Constant::MaxAverageSize + 1;
