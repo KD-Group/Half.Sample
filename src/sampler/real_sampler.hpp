@@ -11,7 +11,7 @@ using namespace std;
 using namespace Automation::BDaq;
 
 #define deviceDescription L"PCI-1714,BID#0"
-#define check_code(code) if (BioFailed(code)) { result.error_code = Error::REAL_SAMPLER_ERROR; return false; }
+#define check_code(code) if (BioFailed(code)) { result.error_code = static_cast<Error::Code>(code); return false; }
 
 namespace Sampler {
 
@@ -40,14 +40,16 @@ class RealSampler: public Sampler {
         check_code(code);
         code = scanChannel->setChannelCount(1);
         check_code(code);
-        code = scanChannel->setSamples(config.sampling_length);
+        code = scanChannel->setSamples(config.sampling_length_per_sample);
         check_code(code);
         code = bfdAiCtrl->Prepare();
         check_code(code);
-        code = bfdAiCtrl->RunOnce();
-        check_code(code);
-        code = bfdAiCtrl->GetData(config.sampling_length, result.buffer);
-        check_code(code);
+        for (int i = 0; i < config.sampling_time; ++i) {
+            code = bfdAiCtrl->RunOnce();
+            check_code(code);
+            code = bfdAiCtrl->GetData(config.sampling_length_per_sample, result.totalSamplingBuffer.data() + config.sampling_length_per_sample * i);
+            check_code(code);
+        }
 
         bfdAiCtrl->Dispose();
 

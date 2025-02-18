@@ -28,9 +28,9 @@ namespace Sampler {
                     result.error_code = Error::Code::FILE_NOT_FOUND;
                     return false;
                 }
-                for (size_t i = 0; i < config.sampling_length; i++) {
-                    oss << result.buffer[i];
-                    if (i < config.sampling_length - 1) {
+                for (size_t i = 0; i < config.sampling_length_per_sample; i++) {
+                    oss << result.totalSamplingBuffer[i];
+                    if (i < config.sampling_length_per_sample - 1) {
                         oss << ",";
                     }
                 }
@@ -52,7 +52,7 @@ namespace Sampler {
             std::string data;
             size_t i = 0;
             while (std::getline(iss, data, ',')) {
-                result.buffer[i++] = std::stod(data);
+                result.totalSamplingBuffer[i++] = std::stod(data);
             }
             iss.close();
             return true;

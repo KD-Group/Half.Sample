@@ -39,13 +39,17 @@ class Sampler:
         return p
 
     def communicate(self, command: str, executor: st.Process = None) -> Result:
-        executor = executor or self.p
-
-        executor.write_line(command)
-        lines = executor.read_until('EOF')
-
         result = Result()
-        exec(lines, result.__dict__)
+        try:
+            executor = executor or self.p
+            executor.write_line(command)
+            lines = executor.read_until('EOF')
+            if lines:
+                exec(lines, result.__dict__)
+        except Exception as e:
+            result.error = True
+            result.message = str(e)
+            raise self.Error("{}: {}".format(result.message, result.chinese_message))
 
         if result.error:
             raise self.Error("{}: {}".format(result.message, result.chinese_message))

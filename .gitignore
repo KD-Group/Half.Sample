@@ -44,3 +44,6 @@ __pycache__/
 # deploy
 sample_kd.egg-info
 dist
+
+src/cmake-build-*
+cpp_build

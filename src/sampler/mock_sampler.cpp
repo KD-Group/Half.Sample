@@ -15,7 +15,7 @@ namespace Sampler {
     }
 
     bool MockSampler::sample(const Config::SamplingConfig &config, Result::SamplingResult &result) {
-        auto buffer = result.buffer;
+        auto buffer = result.totalSamplingBuffer.data();
 
         for (int i = 0; i < config.number_of_waveforms + 1; i++) {
             auto current = buffer + config.waveform_length * i;
@@ -44,14 +44,14 @@ namespace Sampler {
 
         // random noise
         srand(time(nullptr));
-        for (int i = 0; i < config.sampling_length; i++) {
+        for (int i = 0; i < config.sampling_length_per_sample; i++) {
             buffer[i] += (rand() / double(RAND_MAX) - 0.5) * mock_noise;
         }
 
         // vertical shift
         const double max_shift_amplitude = -2.5;
         const double shift_amplitude = rand() / double(RAND_MAX) * max_shift_amplitude;
-        for (int i = 0; i < config.sampling_length; i++) {
+        for (int i = 0; i < config.sampling_length_per_sample; i++) {
             buffer[i] += shift_amplitude;
         }
 
