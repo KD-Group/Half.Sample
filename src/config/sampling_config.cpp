@@ -1,6 +1,8 @@
 #include "sampling_config.hpp"
 #include "../constant.hpp"
 
+#include <algorithm>
+
 namespace Config {
 
     void SamplingConfig::update(int waveforms, double frequency) {
