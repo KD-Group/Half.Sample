@@ -5,7 +5,7 @@ namespace Constant {
     const int MaxSamplingFrequency = int(2e7);  // Hz
     const int MinSamplingFrequency = int(1e6);  // Hz
     const int HighSpeedSamplingThreshold = 10;  // Hz
-    const int MaxSamplingPoints = int(2e7);
+    const int MaxSamplingPoints = int(16e6);
 
     const double HighSpeedEstimatedFrequencyUpperBound = 20480;  // Hz
     const double LowSpeedEstimatedFrequencyUpperBound = 8;  // Hz
