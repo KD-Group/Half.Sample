@@ -40,4 +40,4 @@ namespace Config {
         Commander::Base::variable(valid_length);
     }
 
-} // namespace Samper
+} // namespace Sampler
