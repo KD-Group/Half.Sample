@@ -15,7 +15,7 @@ namespace Constant {
     const int MaxBufferSize = MaxSamplingFrequency * 2;  // sample 2 second in max speed
     const int MaxAverageSize = 1000;
 
-    const double MinVoltageAmplitude = 0.4;  // unit: V
+    const double MinVoltageAmplitude = 0.1;  // unit: V
     const double UpperBound = 0.4;  // percent
     const double LowerBound = 0.1;  // percent
 
