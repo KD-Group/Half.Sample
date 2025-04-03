@@ -37,6 +37,7 @@ namespace Config {
         Commander::Base::variable(sampling_time);
         int cropped_length = int(Constant::CroppedLength * sampling_frequency / Constant::MaxSamplingFrequency);
         valid_length = waveform_length / 2 - cropped_length;
+        valid_length = valid_length > cropped_length ? valid_length : waveform_length;
         Commander::Base::variable(valid_length);
     }
 
