@@ -78,6 +78,8 @@ class Sampler:
     def query(self) -> Result:
         result = self.communicate("to_query")
         result.process()
+        if not result.success and result.message == "success":
+            result.message = "error_undefined"
         return result
 
     class Error(RuntimeError):
