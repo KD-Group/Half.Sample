@@ -4,6 +4,7 @@ import shutil
 from . import Result
 from . import Process
 
+
 class Sampler:
     @property
     def execution_path(self) -> str:

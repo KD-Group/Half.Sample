@@ -8,6 +8,7 @@ import multiprocessing
 
 logger = logging.getLogger('library')
 
+
 def process(target, args=(), finished=None):
     p = multiprocessing.Process(target=target, args=args)
     p.start()
