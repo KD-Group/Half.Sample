@@ -1,9 +1,8 @@
 import os
 import shutil
 
-import st
 from . import Result
-
+from . import Process
 
 class Sampler:
     @property
@@ -29,16 +28,16 @@ class Sampler:
         raise self.Error('Sample Driver Not Found')
 
     @property
-    def p(self) -> st.Process:
+    def p(self) -> Process:
         p = getattr(self, 'p_', None)
         if p is not None:
             return p
 
-        p = st.Process(self.execution_path)
+        p = Process(self.execution_path)
         setattr(self, 'p_', p)
         return p
 
-    def communicate(self, command: str, executor: st.Process = None) -> Result:
+    def communicate(self, command: str, executor: Process = None) -> Result:
         result = Result()
         try:
             executor = executor or self.p
