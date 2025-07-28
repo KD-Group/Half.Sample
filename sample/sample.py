@@ -1,8 +1,8 @@
 import os
 import shutil
 
-from . import Result
 from . import Process
+from . import Result
 
 
 class Sampler:
