@@ -25,6 +25,8 @@ namespace Estimate {
 
     EstimatedResult one_third_search(const Waveform& wave);
 
+    EstimatedResult eigen_fit_exponential(const Waveform& wave);
+
     bool is_wave_going_down(const Waveform& wave);
 
 } // namespace Estimate

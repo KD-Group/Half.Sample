@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.28)
 project(sample)
 
+add_subdirectory(3rdparty/eigen-3.4.0)
+
 set(CMAKE_CXX_STANDARD 11)
 
 add_executable(sample sample.cpp
@@ -33,3 +35,4 @@ add_executable(sample sample.cpp
 )
 
 target_compile_options(sample PRIVATE -fpermissive)
+target_link_libraries(sample Eigen3::Eigen)
