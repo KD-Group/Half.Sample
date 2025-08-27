@@ -16,7 +16,7 @@ before_test:
   - scons --version
 
 test_script:
-  - pycodestyle . --max-line-length=120
+  - pycodestyle . --max-line-length=120 --exclude=src/3rdparty
   - python -m pytest
 
 build_script:
