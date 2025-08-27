@@ -2,6 +2,7 @@
 #include "base.hpp"
 #include "../global/global.hpp"
 #include "../processor/processor.hpp"
+#include <cstring>
 
 #ifdef _WIN32
 
@@ -53,8 +54,7 @@ namespace Commander {
 
         Global::config.auto_mode = (mode == "True");
         Global::config.update(number_of_waveforms, emitting_frequency);
-        Global::result.totalSamplingBuffer.resize(Global::config.sampling_length_per_sample * Global::config.sampling_time);
-        Global::result.resultWave.resize(Global::config.valid_length);
+        clear_measure_data();
 
         bool &measuring = Global::result.measuring;
         if (measuring) {
@@ -126,6 +126,7 @@ namespace Commander {
     }
 
     void to_process() {
+        clear_measure_data();
         bool &success = Global::result.success;
         success = true;
 
@@ -145,6 +146,15 @@ namespace Commander {
         } while (false);
 
         Global::result.measuring = false;
+    }
+
+    void clear_measure_data() {
+        Global::result.totalSamplingBuffer.resize(Global::config.sampling_length_per_sample * Global::config.sampling_time);
+        Global::result.resultWave.resize(Global::config.valid_length);
+        std::memset(Global::result.totalSamplingBuffer.data(), 0,
+                    Global::result.totalSamplingBuffer.size() * sizeof(double));
+        std::memset(Global::result.resultWave.data(), 0,
+                    Global::result.resultWave.size() * sizeof(double));
     }
 
 } // namespace Commander

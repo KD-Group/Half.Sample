@@ -11,6 +11,8 @@ namespace Commander {
     void to_dump();
 
     void to_process();
+
+    void clear_measure_data();
 } // namespace Commander
 
 #endif
