@@ -19,7 +19,7 @@ else:
     env = Environment(
         CXX='g++-4.9', 
         CPPFLAGS=['-std=c++11', '-pthread', "-O2"],
-        CPPPATH=[eigen_path]  # 添加Eigen头文件路径,
+        CPPPATH=[eigen_path],  # 添加Eigen头文件路径
         LIBS=['pthread']
     )
     env.Program('cpp_build/sample.exe', Glob('cpp_build/*/*.cpp') + ['cpp_build/sample.cpp'], LIBS=['pthread'])
