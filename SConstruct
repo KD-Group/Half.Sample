@@ -1,7 +1,7 @@
 import sys
 
 VariantDir('cpp_build', 'src', duplicate=0)
-eigen_path = '3rdparty/eigen-3.4.0'
+eigen_path = 'src/3rdparty/eigen-3.4.0'
 
 if sys.platform == 'win32':
     env = Environment(
