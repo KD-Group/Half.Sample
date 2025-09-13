@@ -21,6 +21,27 @@ namespace Commander {
             return true;
         }
 
+        /*
+            寻找并叠加有效波形：
+            - 遍历 result.totalSamplingBuffer 中的数据点
+            - 使用状态机方式检测满足条件的波形起始点（低于下边界后又高于上边界）
+            - 每次检测到完整波形时：
+              - 累加波形前半部分作为基准值计算（用于后续去直流分量）
+              - 将有效波形段叠加到 result.resultWave中
+
+            关键处理步骤
+            1. 波形检测逻辑：
+                1.1 初始状态为 under_lower_bound = false
+                1.2 当信号降至下边界以下时设置标志
+                1.3 当信号升至上边界以上时认为检测到完整波形
+                1.4 如果后续RapidDeclineCheckPoints个点中，百分之的RapidDeclineCheckPoints个点的波形下降速度超过RapidDeclinePercentage，
+            2. 数据叠加与统计：
+                2.1 base_sum 和 base_count 用于统计波形前导部分的平均值
+                2.2 copy_times 统计叠加次数
+                2.3 叠加多个周期的波形以提高信噪比
+            3.错误处理：
+                3.1 如果未检测到任何有效波形（copy_times == 0），返回错误码 Error::WAVE_NOT_FOUND
+         */
         bool summation(const Config::SamplingConfig &config, Result::SamplingResult &result) {
             const double minimum = result.minimum;
             const double maximum = result.maximum;
@@ -93,6 +114,52 @@ namespace Commander {
                 (*merged_wave)[i] = sum / merged_size;
             }
 
+            auto maximum = *std::max_element(result.resultWave.begin(), result.resultWave.end());
+            auto minimum = *std::min_element(result.resultWave.begin(), result.resultWave.end());
+            const int rapidDeclineCheckPoints = static_cast<int>(merged_length * Constant::RapidDeclineCheckPointsPercentage);
+            // 检查result.resultWave中是否存在快速下降的点
+            if (maximum > minimum && merged_length > rapidDeclineCheckPoints) {
+                // 计算快速下降阈值：(maximum - minimum) * 百分比
+                const double rapid_decline_threshold = (maximum - minimum) * Constant::RapidDeclinePercentage;
+
+                // 在result.resultWave中检测快速下降点
+                for (int i = 0; i < merged_length - rapidDeclineCheckPoints; i++) {
+                    // 检查当前点和其后第N个点的下降幅度
+                    if ((i + rapidDeclineCheckPoints) < merged_length) {
+                        double current_value = (*merged_wave)[i];
+                        double next_value = (*merged_wave)[i + rapidDeclineCheckPoints];
+
+                        // 如果当前点相比后面第N个点的下降幅度超过阈值
+                        if (current_value - next_value > rapid_decline_threshold) {
+                            // 检查第N个点后的N个点中是否有足够比例的点比当前点降幅大于阈值
+                            int decrease_count = 0;
+                            int total_check_points = 0;
+
+                            // 检查第N个点后的N个点
+                            for (int j = 1; j <= rapidDeclineCheckPoints; j++) {
+                                // 边界检查
+                                if ((i + rapidDeclineCheckPoints + j) >= merged_length) {
+                                    break; // 超出边界则停止检查
+                                }
+
+                                total_check_points++;
+                                if (current_value - (*merged_wave)[i + rapidDeclineCheckPoints + j] >
+                                    rapid_decline_threshold) {
+                                    decrease_count++;
+                                }
+                            }
+
+                            // 如果满足比例的点满足条件，则记录截取点
+                            if (total_check_points > 0 &&
+                                static_cast<double>(decrease_count) / total_check_points >= Constant::RapidDeclineThreshold) {
+                                // 记录快速下降点的索引
+                                merged_wave->resize(i);
+                                break; // 找到第一个满足条件的点就停止
+                            }
+                        }
+                    }
+                }
+            }
             return {merged_wave, interval};
         }
 

@@ -120,6 +120,18 @@ namespace Commander {
         Base::variable(measuring);
     }
 
+    void to_config() {
+        int number_of_waveforms;
+        double emitting_frequency;
+        std::string mode;
+        std::cin >> number_of_waveforms;
+        std::cin >> emitting_frequency;
+        std::cin >> mode;
+
+        Global::config.auto_mode = (mode == "True");
+        Global::config.update(number_of_waveforms, emitting_frequency);
+    }
+
     void to_dump() {
         std::cin >> Global::config.dump_file_path;
         async_measure();

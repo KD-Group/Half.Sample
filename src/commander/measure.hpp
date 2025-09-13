@@ -6,6 +6,8 @@ namespace Commander {
 
     void to_measure();
 
+    void to_config();
+
     void is_measuring();
 
     void to_dump();

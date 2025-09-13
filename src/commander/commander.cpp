@@ -65,6 +65,7 @@ namespace Commander {
         add_func_into_mapper(is_measuring, mapper);
         add_func_into_mapper(to_dump, mapper);
         add_func_into_mapper(to_process, mapper);
+        add_func_into_mapper(to_config, mapper);
 
         // Default sampler
         Global::sampler = Sampler::SamplerFactory::get("mock_sampler");

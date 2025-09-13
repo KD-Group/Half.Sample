@@ -30,6 +30,13 @@ namespace Constant {
     const double DefaultMockNoise = 1.0;  // V
 
     const double WaveGoingDownThreshold = -0.05;  // V
+
+    // 新增的快速下降检测百分比阈值
+    // 如果后续RapidDeclineCheckPoints个点中，百分之的RapidDeclineCheckPoints个点的波形下降速度超过RapidDeclinePercentage，
+    // 则认为该波形快速下降，截取到当前点
+    const double RapidDeclinePercentage = 0.1;  // 10% of (maximum - minimum)
+    const double RapidDeclineThreshold = 0.9;   // 90% of points must meet the decline condition
+    const double RapidDeclineCheckPointsPercentage = 0.05;    // 检查占总点数 * RapidDeclineCheckPointsPercentage个点的数量
 }
 
 #endif
