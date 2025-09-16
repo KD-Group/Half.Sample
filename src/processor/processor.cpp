@@ -118,6 +118,7 @@ namespace Commander {
             auto minimum = *std::min_element(result.resultWave.begin(), result.resultWave.end());
             const int rapidDeclineCheckPoints = static_cast<int>(merged_length * Constant::RapidDeclineCheckPointsPercentage);
             // 检查result.resultWave中是否存在快速下降的点
+            int rapid_decline_point_idx = -1;
             if (maximum > minimum && merged_length > rapidDeclineCheckPoints) {
                 // 计算快速下降阈值：(maximum - minimum) * 百分比
                 const double rapid_decline_threshold = (maximum - minimum) * Constant::RapidDeclinePercentage;
@@ -153,14 +154,14 @@ namespace Commander {
                             if (total_check_points > 0 &&
                                 static_cast<double>(decrease_count) / total_check_points >= Constant::RapidDeclineThreshold) {
                                 // 记录快速下降点的索引
-                                merged_wave->resize(i);
+                                rapid_decline_point_idx = i;
                                 break; // 找到第一个满足条件的点就停止
                             }
                         }
                     }
                 }
             }
-            return {merged_wave, interval};
+            return {merged_wave, interval, rapid_decline_point_idx};
         }
 
         bool estimate(const Config::SamplingConfig &config, Result::SamplingResult &result) {

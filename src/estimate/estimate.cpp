@@ -52,6 +52,19 @@ namespace Estimate {
     }
 
     EstimatedResult one_third_search(const Waveform& wave) {
+        EstimatedResult result = one_third_search_inner(wave);
+        double v0 = result.w + result.b;
+        double v_inf = result.b;
+        if (v0 >= v_inf || v_inf < 0 || result.loss > 1) {
+            if (wave.rapid_decline_point_idx != -1 && wave.rapid_decline_point_idx < wave.values->size()) {
+                wave.values->resize(wave.rapid_decline_point_idx);
+                result = one_third_search_inner(wave);
+            }
+        }
+        return result;
+    }
+
+    EstimatedResult one_third_search_inner(const Waveform& wave) {
         double l = Constant::MinTauValue / 10, r = Constant::MaxTauValue * 2;  // range of tau
 
         while (l + Constant::SearchEpsilon < r) {
