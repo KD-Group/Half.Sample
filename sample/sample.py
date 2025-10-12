@@ -63,8 +63,10 @@ class Sampler:
     def measure(self, number_of_waveforms: int, emitting_frequency: float, auto_mode: bool = False) -> Result:
         return self.communicate("to_measure {} {:.2f} {}".format(number_of_waveforms, emitting_frequency, auto_mode))
 
-    def dump(self, filename: str, number_of_waveforms: int, emitting_frequency: float, auto_mode: bool = False) -> Result:
-        return self.communicate("to_dump {} {} {:.2f} {}".format(filename, number_of_waveforms, emitting_frequency, auto_mode))
+    def dump(self, filename: str, number_of_waveforms: int, emitting_frequency: float,
+             auto_mode: bool = False) -> Result:
+        return self.communicate(
+            "to_dump {} {} {:.2f} {}".format(filename, number_of_waveforms, emitting_frequency, auto_mode))
 
     def process(self, filename: str) -> Result:
         return self.communicate("to_process {}".format(filename))
