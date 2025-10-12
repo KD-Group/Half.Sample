@@ -26,6 +26,7 @@ namespace Config {
         //  采集卡一次采集能拿到的完整波形个数为waveforms_per_sampling = MaxSamplingFrequency / wave_form_length, 采集卡采样次数为N，则
         //	sampling_time = (waveforms / waveforms_per_sample) + 1
         //  举一个例子，采集卡一次能拿到完整波形为5，如果波形平均次数为32，那么要采集 (32 / 5) + 1 = 7次
+        Commander::Base::variable(number_of_waveforms);
         sampling_interval = 1e6 / sampling_frequency;
         Commander::Base::variable(sampling_interval);
         waveform_length = int(sampling_frequency / frequency);

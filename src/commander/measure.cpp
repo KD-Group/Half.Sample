@@ -98,16 +98,21 @@ namespace Commander {
             const double loss = Global::result.estimate.loss;
             Base::variable(loss);
 
-            printf("wave = [");
+        } else {
+            std::string message = Error::to_string(Global::result.error_code);
+            Base::variable(message);
+            const double wave_interval = Global::result.estimate.interval;
+            Base::variable(wave_interval);
+        }
+
+        printf("wave = [");
+        if (Global::result.estimate.y) {
             const auto &values = *Global::result.estimate.y;
             for (double value: values) {
                 printf("%.3f,", value);
             }
-            printf("]\n");
-        } else {
-            std::string message = Error::to_string(Global::result.error_code);
-            Base::variable(message);
         }
+        printf("]\n");
     }
 
     void to_measure() {

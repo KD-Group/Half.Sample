@@ -101,6 +101,7 @@ namespace Commander {
             int merged_size = resultWaveLength / Constant::MaxAverageSize + 1;
             int merged_length = resultWaveLength / merged_size;
             double interval = config.sampling_interval * merged_size;
+            Global::result.estimate.interval = interval;
 
             VectorPtr merged_wave(new Vector(merged_length));
             for (int i = 0; i < merged_length; i++) {
