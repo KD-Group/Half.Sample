@@ -1,4 +1,5 @@
 #include "commander/commander.hpp"
+#include <clocale>
 
 int main() {
     // 设置本地化支持 UTF-8（Linux/Mac）
