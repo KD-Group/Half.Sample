@@ -81,13 +81,7 @@ namespace Estimate {
             }
         }
 
-        // 检查是否收敛到边界值（无效拟合）
-        double final_tau = (l + r) / 2;
-        // 这里的 1.5 是一个经验值，表示允许 tau 值超出最大预设值 50% 的范围。如果超出这个范围，就认为算法收敛到了无效的边界解。
-        if (final_tau > Constant::MaxTauValue * 1.5) {
-            return {wave, 0.0};  // 返回tau=0表示无法拟合
-        }
-        return {wave, final_tau};
+        return {wave, (l + r) / 2};
     }
 
     // y = w * exp(α * x) + b
