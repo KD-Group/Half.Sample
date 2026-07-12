@@ -4,7 +4,7 @@
 #include "sampler.hpp"
 
 #include "Windows.h"
-#include "bdaqctrl.h"
+#include "../daq_headers/legacy/bdaqctrl.h"
 #include "../error/error.hpp"
 #include <fstream>
 using namespace std;

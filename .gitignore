@@ -47,3 +47,5 @@ dist
 
 src/cmake-build-*
 cpp_build
+src/daq_capability_test/field_test_matrix.tsv
+daq_results/

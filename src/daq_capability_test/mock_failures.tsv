@@ -1,0 +1,15 @@
+# Mock failure manifest. This is not a DAQ matrix; each matrix_path is directly executable.
+scenario	matrix_path	case	expected_code	expected_exit
+short_read	src/daq_capability_test/mock_failures/short_read.tsv	single_channel_boundary	POINT_COUNT_MISMATCH	2
+timeout	src/daq_capability_test/mock_failures/timeout.tsv	single_channel_boundary	TIMEOUT	6
+overrun	src/daq_capability_test/mock_failures/overrun.tsv	single_channel_boundary	OVERRUN	6
+cache_overflow	src/daq_capability_test/mock_failures/cache_overflow.tsv	single_channel_boundary	CACHE_OVERFLOW	6
+reference_missing	src/daq_capability_test/mock_failures/reference_missing.tsv	dual_channel_reference	SIGNAL_SPAN_TOO_LOW	2
+edge_missing	src/daq_capability_test/mock_failures/edge_missing.tsv	segment_phase	EDGE_NOT_FOUND	2
+edge_jitter	src/daq_capability_test/mock_failures/edge_jitter.tsv	segment_phase	EDGE_JITTER_EXCEEDED	2
+insufficient_coverage	src/daq_capability_test/mock_failures/insufficient_coverage.tsv	phase_stitch	MAX_ATTEMPTS_EXCEEDED	2
+overlap_mismatch	src/daq_capability_test/mock_failures/overlap_mismatch.tsv	phase_stitch	OVERLAP_MISMATCH	2
+non_stationary	src/daq_capability_test/mock_failures/non_stationary.tsv	phase_stitch	NON_STATIONARY_RESPONSE	2
+boundary_jump	src/daq_capability_test/mock_failures/boundary_jump.tsv	phase_stitch	WAVEFORM_BOUNDARY_DISCONTINUITY	2
+trigger_timeout	src/daq_capability_test/mock_failures/trigger_timeout.tsv	external_trigger	TRIGGER_TIMEOUT	6
+delay_position_mismatch	src/daq_capability_test/mock_failures/delay_position_mismatch.tsv	delay_trigger	DELAY_POSITION_MISMATCH	2

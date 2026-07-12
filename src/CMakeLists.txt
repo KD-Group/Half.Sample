@@ -25,7 +25,7 @@ add_executable(sample sample.cpp
         processor/processor.hpp
         processor/processor.cpp
         result/sampling_result.hpp
-        sampler/bdaqctrl.h
+        daq_headers/legacy/bdaqctrl.h
         sampler/mock_sampler.hpp
         sampler/mock_sampler.cpp
         sampler/real_sampler.hpp

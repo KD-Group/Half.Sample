@@ -1,0 +1,13 @@
+# Deterministic offline matrix. mock_scenario selects FakeDaqAdapter data; real adapters ignore it.
+enabled	device	mode	sample_channel	reference_channel	value_range	sample_rate_hz	points_per_channel	repeat_count	timeout_seconds	signal_frequency_hz	min_complete_cycles	min_signal_span_v	max_edge_jitter_us	target_waveforms	phase_bin_count	min_samples_per_bin	min_overlap_percent	max_overlap_error_v	max_response_drift_v	max_boundary_jump_v	max_attempts	trigger_source	trigger_edge	trigger_action	trigger_delay_counts	trigger_delay_target_phase_percent	max_delay_position_error_us	case_name	reference_duty_cycle_percent	max_duty_cycle_error_percent	mock_scenario
+true	MOCK	preflight																										preflight	50	2	success
+true	MOCK	capability																										device_capability	50	2	success
+true	MOCK	acquire	0		-10V~10V	100000	200	2	1																			single_channel_boundary	50	2	cache_overflow
+true	MOCK	acquire	0		-10V~10V	50000	200	2	1	1000	2	1																low_sample_rate_500k	50	2	success
+true	MOCK	acquire	0		-10V~10V	20000	200	2	1	1000	2	1																low_sample_rate_200k	50	2	success
+true	MOCK	acquire	0		-10V~10V	10000	200	2	1	1000	2	1																low_sample_rate_100k	50	2	success
+true	MOCK	acquire	0	1	-10V~10V	100000	200	2	1			1																dual_channel_reference	50	2	success
+true	MOCK	segment_phase	0	1	-10V~10V	100000	200	2	1	1000		1	20		10	1	1	5	5	2	5							segment_phase	50	2	success
+true	MOCK	phase_stitch	0	1	-10V~10V	100000	200	2	1	1000		1	20	1	10	1	1	5	5	2	5							phase_stitch	50	2	success
+true	MOCK	trigger	0	1	-10V~10V	100000	200	2	1				20									mock	rising	none				external_trigger	50	2	success
+true	MOCK	delay_trigger	0	1	-10V~10V	100000	30	2	1	1000			20									mock	rising	delay_to_start	0,250,500,750	0,25,50,75	5	delay_trigger	50	2	success

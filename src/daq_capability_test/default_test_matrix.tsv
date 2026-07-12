@@ -1,0 +1,39 @@
+# DAQ capability test matrix. Tab-separated only; preserve empty fields.
+# Lines whose first non-space character is # and empty lines are ignored.
+# REQUIRED marks a safety or business threshold that must be reviewed before an enabled case can run.
+# case_name: unique stable identifier; selects case-specific required fields. enabled: exactly true or false; false skips preflight semantics.
+# device: DAQNavi description; PCI-1714,BID#0 is the lab board/default board index and must match installed hardware.
+# mode: allowed preflight, capability, acquire, segment_phase, phase_stitch, trigger, delay_trigger.
+# sample_channel/reference_channel: zero-based AI channel numbers; defaults AI0/AI1 exercise primary/reference inputs.
+# value_range: signed voltage endpoints in <number>V~<number>V format.
+# sample_rate_hz: positive samples/second/channel; 1 MHz is the nominal boundary rate, while 500/200/100 kHz probe low-rate behavior.
+# points_per_channel: positive samples/channel; 16 million stresses long acquisition and requires sufficient RAM.
+# repeat_count: positive repetitions; default 3 detects run-to-run drift. timeout_seconds: positive command timeout in seconds.
+# signal_frequency_hz: positive applied input frequency in Hz for low-rate/phase cases. min_complete_cycles: positive count for low-rate cases.
+# min_signal_span_v: required >0 peak-to-peak volts for low-rate/dual/phase cases.
+# max_edge_jitter_us: required >0 microseconds for phase and trigger cases.
+# reference_duty_cycle_percent: reference high-time duty in percent, strictly (0,100); phase rows default to 50.
+# max_duty_cycle_error_percent: non-negative absolute duty error tolerance in percentage points.
+# target_waveforms: comma-separated positive integer waveform counts for phase_stitch. phase_bin_count: positive phase_stitch histogram bin count.
+# min_samples_per_bin: positive minimum samples in each phase bin.
+# min_overlap_percent: phase_stitch threshold in percent, strictly >0 and <=100.
+# max_overlap_error_v/max_response_drift_v/max_boundary_jump_v: phase_stitch voltage limits, each >=0 volts.
+# max_attempts: positive phase_stitch acquisition attempt limit.
+# trigger_source: non-empty trigger input for trigger modes. trigger_edge: allowed rising or falling.
+# trigger_action: allowed none or delay_to_start for trigger modes.
+# trigger_delay_counts: comma-separated non-negative hardware counts (at least two); count units are never inferred from sample rate.
+# trigger_delay_target_phase_percent: expected start phase for each count, same length as trigger_delay_counts, each in [0,100).
+# delay_trigger first measures a reference calibration, probes each count with a long window, then validates short windows; max_delay_position_error_us is the independent phase tolerance.
+# Safety: disconnect uncontrolled sources and confirm input range, grounding, memory, and trigger wiring before enabling.
+enabled	device	mode	sample_channel	reference_channel	value_range	sample_rate_hz	points_per_channel	repeat_count	timeout_seconds	signal_frequency_hz	min_complete_cycles	min_signal_span_v	max_edge_jitter_us	target_waveforms	phase_bin_count	min_samples_per_bin	min_overlap_percent	max_overlap_error_v	max_response_drift_v	max_boundary_jump_v	max_attempts	trigger_source	trigger_edge	trigger_action	trigger_delay_counts	trigger_delay_target_phase_percent	max_delay_position_error_us	case_name	reference_duty_cycle_percent	max_duty_cycle_error_percent
+true	PCI-1714,BID#0	preflight																										preflight	50	2
+true	PCI-1714,BID#0	capability																										device_capability	50	2
+true	PCI-1714,BID#0	acquire	0		-10V~10V	1000000	16000000	3	30																			single_channel_boundary	50	2
+true	PCI-1714,BID#0	acquire	0		-10V~10V	500000	16000000	3	40	1000	2	REQUIRED																low_sample_rate_500k	50	2
+true	PCI-1714,BID#0	acquire	0		-10V~10V	200000	16000000	3	90	1000	2	REQUIRED																low_sample_rate_200k	50	2
+true	PCI-1714,BID#0	acquire	0		-10V~10V	100000	16000000	3	180	1000	2	REQUIRED																low_sample_rate_100k	50	2
+true	PCI-1714,BID#0	acquire	0	1	-10V~10V	1000000	16000000	3	30			REQUIRED																dual_channel_reference	50	2
+true	PCI-1714,BID#0	segment_phase	0	1	-10V~10V	1000000	16000000	3	30	1000		REQUIRED	REQUIRED															segment_phase	50	REQUIRED
+true	PCI-1714,BID#0	phase_stitch	0	1	-10V~10V	1000000	16000000	3	30	1000		REQUIRED	REQUIRED	1,10,100	REQUIRED	REQUIRED	REQUIRED	REQUIRED	REQUIRED	REQUIRED	REQUIRED							phase_stitch	50	REQUIRED
+false	PCI-1714,BID#0	trigger	0		-10V~10V	1000000	16000000	3	30				REQUIRED									external_analog	rising	none				external_trigger	50	2
+false	PCI-1714,BID#0	delay_trigger	0	1	-10V~10V	1000000	300	3	30	1000			REQUIRED									external_analog	rising	delay_to_start	0,250,500,750	0,25,50,75	REQUIRED	delay_trigger	50	2
