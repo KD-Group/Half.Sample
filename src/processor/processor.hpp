@@ -5,15 +5,15 @@
 #include "../result/sampling_result.hpp"
 
 namespace Commander {
-    namespace Processor {
+namespace Processor {
 
-        bool align(const Config::SamplingConfig &config, Result::SamplingResult &result);
+bool align(const Config::SamplingConfig& config, Result::SamplingResult& result);
 
-        bool summation(const Config::SamplingConfig &config, Result::SamplingResult &result);
+bool summation(const Config::SamplingConfig& config, Result::SamplingResult& result);
 
-        bool estimate(const Config::SamplingConfig &config, Result::SamplingResult &result);
+bool estimate(const Config::SamplingConfig& config, Result::SamplingResult& result);
 
-    } // namespace Processor
+} // namespace Processor
 } // namespace Commander
 
 #endif

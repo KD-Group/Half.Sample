@@ -2,8 +2,5 @@
 #include "daq_capability_test/xnavi_adapter.hpp"
 
 namespace daq_capability_test {
-std::unique_ptr<DaqAdapter> create_adapter()
-{
-    return std::unique_ptr<DaqAdapter>(new XNaviDaqAdapter());
-}
-}
+std::unique_ptr<DaqAdapter> create_adapter() { return std::unique_ptr<DaqAdapter>(new XNaviDaqAdapter()); }
+} // namespace daq_capability_test

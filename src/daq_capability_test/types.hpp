@@ -5,11 +5,7 @@
 
 namespace daq_capability_test {
 
-enum class Status {
-    Pass,
-    Fail,
-    Skip
-};
+enum class Status { Pass, Fail, Skip };
 
 enum class ExitCategory {
     Success = 0,
@@ -29,4 +25,4 @@ struct CommandResult {
     ExitCategory exit_category = ExitCategory::ValidationFailed;
 };
 
-}  // namespace daq_capability_test
+} // namespace daq_capability_test

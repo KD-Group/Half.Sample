@@ -2,19 +2,19 @@
 #define MEASURE_HPP
 
 namespace Commander {
-    void to_query();
+void to_query();
 
-    void to_measure();
+void to_measure();
 
-    void to_config();
+void to_config();
 
-    void is_measuring();
+void is_measuring();
 
-    void to_dump();
+void to_dump();
 
-    void to_process();
+void to_process();
 
-    void clear_measure_data();
+void clear_measure_data();
 } // namespace Commander
 
 #endif

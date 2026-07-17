@@ -60,13 +60,23 @@ class Sampler:
     def is_measuring(self) -> bool:
         return self.communicate('is_measuring').measuring
 
-    def measure(self, number_of_waveforms: int, emitting_frequency: float, auto_mode: bool = False) -> Result:
-        return self.communicate("to_measure {} {:.2f} {}".format(number_of_waveforms, emitting_frequency, auto_mode))
+    def measure(self, number_of_waveforms: int, emitting_frequency: float, auto_mode: bool = False,
+                instant_ai_frequency_threshold: float = 0.0,
+                instant_ai_target_points_per_waveform: int = 100) -> Result:
+        command = "to_measure {} {:.12g} {}".format(number_of_waveforms, emitting_frequency, auto_mode)
+        if instant_ai_frequency_threshold != 0.0 or instant_ai_target_points_per_waveform != 100:
+            command += " {:.12g} {}".format(
+                instant_ai_frequency_threshold, instant_ai_target_points_per_waveform)
+        return self.communicate(command)
 
     def dump(self, filename: str, number_of_waveforms: int, emitting_frequency: float,
-             auto_mode: bool = False) -> Result:
-        return self.communicate(
-            "to_dump {} {} {:.2f} {}".format(filename, number_of_waveforms, emitting_frequency, auto_mode))
+             auto_mode: bool = False, instant_ai_frequency_threshold: float = 0.0,
+             instant_ai_target_points_per_waveform: int = 100) -> Result:
+        command = "to_dump {} {} {:.12g} {}".format(filename, number_of_waveforms, emitting_frequency, auto_mode)
+        if instant_ai_frequency_threshold != 0.0 or instant_ai_target_points_per_waveform != 100:
+            command += " {:.12g} {}".format(
+                instant_ai_frequency_threshold, instant_ai_target_points_per_waveform)
+        return self.communicate(command)
 
     def process(self, filename: str) -> Result:
         return self.communicate("to_process {}".format(filename))

@@ -11,20 +11,20 @@
 
 namespace Sampler {
 
-    SamplerPtr SamplerFactory::get(const std::string &sampler_name) {
-        SamplerPtr sampler;
+SamplerPtr SamplerFactory::get(const std::string& sampler_name) {
+    SamplerPtr sampler;
 
-        if (sampler_name == "mock_sampler") {
-            sampler = std::make_shared<MockSampler>();
-        }
+    if (sampler_name == "mock_sampler") {
+        sampler = std::make_shared<MockSampler>();
+    }
 
 #ifdef _WIN32
-        if (sampler_name == "real_sampler") {
-            sampler = std::make_shared<RealSampler>();
-        }
+    if (sampler_name == "real_sampler") {
+        sampler = std::make_shared<RealSampler>();
+    }
 #endif
 
-        return sampler;
-    }
+    return sampler;
+}
 
 } // namespace Sampler

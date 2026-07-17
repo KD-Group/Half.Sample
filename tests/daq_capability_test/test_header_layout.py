@@ -34,6 +34,10 @@ def vendor_source_violations(source):
     return violations
 
 
+def compact_cpp(source):
+    return "".join(source.split())
+
+
 class HeaderLayoutTest(unittest.TestCase):
     def test_standalone_entry_initializes_windows_console_for_utf8_bytes(self):
         source = (REPO_ROOT / "src/daq_capability_test/main.cpp").read_text(encoding="utf-8")
@@ -178,15 +182,17 @@ class HeaderLayoutTest(unittest.TestCase):
         self.assertNotIn("AdxBufferedAiCtrlCreate\"", source)
 
     def test_xnavi_event_context_outlives_dispatched_callbacks(self):
-        source = (REPO_ROOT / "src/daq_capability_test/xnavi_adapter.cpp").read_text(encoding="utf-8")
+        source = compact_cpp(
+            (REPO_ROOT / "src/daq_capability_test/xnavi_adapter.cpp").read_text(encoding="utf-8")
+        )
         self.assertIn("process_lifetime_event_context", source)
-        self.assertIn("EventContext* events", source)
+        self.assertIn("EventContext*events", source)
         self.assertIn("EVENT_CONTEXT_CAPACITY", source)
-        self.assertIn("new EventRegistry", source)
+        self.assertIn("newEventRegistry", source)
         self.assertNotIn("vector<std::unique_ptr<EventContext", source)
         self.assertNotIn("while(events.inflight.load())", source)
         self.assertNotIn("&events", source)
-        create = source.index("controller = BufferedAiCtrl::Create()")
+        create = source.index("controller=BufferedAiCtrl::Create()")
         allocate = source.index("events=process_lifetime_event_context()", create)
         self.assertLess(create, allocate)
         self.assertIn("compare_exchange_weak", source)
@@ -194,19 +200,23 @@ class HeaderLayoutTest(unittest.TestCase):
 
     def test_configure_readback_failure_invalidates_both_adapters(self):
         for name in ("legacy_adapter.cpp", "xnavi_adapter.cpp"):
-            source = (REPO_ROOT / "src/daq_capability_test" / name).read_text(encoding="utf-8")
-            self.assertIn("if(!validated.success){impl_->stop();return validated;}", source)
+            source = compact_cpp(
+                (REPO_ROOT / "src/daq_capability_test" / name).read_text(encoding="utf-8")
+            )
+            self.assertIn("if(!validated.success){impl_->stop();returnvalidated;}", source)
 
     def test_missing_trigger_interface_is_unsupported_in_both_adapters(self):
         for name in ("legacy_adapter.cpp", "xnavi_adapter.cpp"):
-            source = (REPO_ROOT / "src/daq_capability_test" / name).read_text(encoding="utf-8")
+            source = compact_cpp(
+                (REPO_ROOT / "src/daq_capability_test" / name).read_text(encoding="utf-8")
+            )
             interface_path = source.split(
-                "Trigger* trigger=impl_->controller->getTrigger();", 1
+                "Trigger*trigger=impl_->controller->getTrigger();", 1
             )[1].split("CollectionOwner", 1)[0]
             if name == "xnavi_adapter.cpp":
                 interface_path = interface_path.split("ArrayOwner", 1)[0]
             self.assertIn("r.unsupported=true", interface_path, name)
-            invalid_value_path = source.split('"INVALID_TRIGGER_VALUE"', 1)[1].split("SignalDrop source", 1)[0]
+            invalid_value_path = source.split('"INVALID_TRIGGER_VALUE"', 1)[1].split("SignalDropsource", 1)[0]
             self.assertNotIn("unsupported=true", invalid_value_path, name)
 
     def test_legacy_runtime_and_collections_are_raii_managed(self):
@@ -222,7 +232,9 @@ class HeaderLayoutTest(unittest.TestCase):
         self.assertNotIn("output.pop_back()", source)
 
     def test_timeout_smoke_returns_driver_failure_exit_code(self):
-        smoke = (REPO_ROOT / "tests/daq_capability_test/legacy_adapter_smoke.cpp").read_text(encoding="utf-8")
+        smoke = compact_cpp(
+            (REPO_ROOT / "tests/daq_capability_test/legacy_adapter_smoke.cpp").read_text(encoding="utf-8")
+        )
         self.assertIn('timed.code!="TIMEOUT"||!timed.value.timed_out', smoke)
         self.assertIn('mode=="timeout-recover"', smoke)
 

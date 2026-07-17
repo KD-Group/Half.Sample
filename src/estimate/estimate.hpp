@@ -5,31 +5,31 @@
 
 namespace Estimate {
 
-    struct EstimatedResult {
-        double tau{};
-        double w{}, b{};
-        double loss{};
-        double interval{};
-        VectorPtr y;
+struct EstimatedResult {
+    double tau{};
+    double w{}, b{};
+    double loss{};
+    double interval{};
+    VectorPtr y;
 
-        EstimatedResult() = default;
+    EstimatedResult() = default;
 
-        EstimatedResult(const Waveform& wave, double tau);
+    EstimatedResult(const Waveform& wave, double tau);
 
-        void calculate_para();
+    void calculate_para();
 
-        void calculate_loss();
+    void calculate_loss();
 
-        double margin();
-    };
+    double margin();
+};
 
-    EstimatedResult one_third_search(const Waveform& wave);
+EstimatedResult one_third_search(const Waveform& wave);
 
-    EstimatedResult one_third_search_inner(const Waveform& wave);
+EstimatedResult one_third_search_inner(const Waveform& wave);
 
-    EstimatedResult eigen_fit_exponential(const Waveform& wave);
+EstimatedResult eigen_fit_exponential(const Waveform& wave);
 
-    bool is_wave_going_down(const Waveform& wave);
+bool is_wave_going_down(const Waveform& wave);
 
 } // namespace Estimate
 

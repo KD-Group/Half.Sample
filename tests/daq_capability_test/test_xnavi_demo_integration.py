@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from .subprocess_compat import run_captured
+
 
 ROOT = Path(__file__).resolve().parents[2]
 EXE = ROOT / "cpp_build/xnavi_adapter_smoke.exe"
@@ -30,9 +32,8 @@ class XNaviDemoIntegrationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "cpp_build") as directory:
             matrix = Path(directory) / "demo.tsv"
             matrix.write_text("\n".join(rows) + "\n", encoding="utf-8")
-            completed = subprocess.run([str(cli), "suite", "--config", str(matrix), "--all",
-                                        "--output-dir", directory], cwd=ROOT,
-                                       capture_output=True, text=True, timeout=30)
+            completed = run_captured([str(cli), "suite", "--config", str(matrix), "--all",
+                                      "--output-dir", directory], cwd=ROOT, timeout=30)
             if "DEVICE_NOT_FOUND" in completed.stdout + completed.stderr:
                 self.skipTest("DemoDevice is unavailable")
             self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
@@ -40,10 +41,10 @@ class XNaviDemoIntegrationTest(unittest.TestCase):
             case = result["cases"]["single_channel_boundary"]
             self.assertEqual("PASS", case["result"])
             self.assertEqual("1", case["evidence"]["passed_repetitions"])
-            rejected = subprocess.run(
+            rejected = run_captured(
                 [str(cli), "acquire", "--device", "DemoDevice,BID#0", "--channels", "0", "--range", "5V",
                  "--rate", "100000", "--points", "1024", "--repeat", "1", "--timeout", "5",
-                 "--output-dir", directory], cwd=ROOT, capture_output=True, text=True, timeout=30)
+                 "--output-dir", directory], cwd=ROOT, timeout=30)
             self.assertNotEqual(0, rejected.returncode)
             self.assertEqual("VALUE_RANGE_UNSUPPORTED", json.loads(rejected.stdout.splitlines()[-1])["code"])
 
@@ -51,9 +52,9 @@ class XNaviDemoIntegrationTest(unittest.TestCase):
         if not EXE.is_file():
             self.skipTest("XNavi executable has not been built")
         for repetition in range(2):
-            completed = subprocess.run(
+            completed = run_captured(
                 [str(EXE), "DemoDevice,BID#0", "validate-layout"],
-                cwd=ROOT, capture_output=True, text=True, timeout=30,
+                cwd=ROOT, timeout=30,
             )
             output = completed.stdout + completed.stderr
             if "DEVICE_NOT_FOUND" in output:

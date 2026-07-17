@@ -13,6 +13,7 @@ install:
 
 before_test:
   - python --version
+  - python -c "import sys; assert sys.version_info[:2] == (3, 6), sys.version"
   - scons --version
 
 test_script:

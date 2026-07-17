@@ -14,9 +14,7 @@ struct Waveform {
     int rapid_decline_point_idx;
 
     Waveform(VectorPtr values, double interval, int rapid_decline_point_idx)
-        : values(std::move(values)), interval(interval), rapid_decline_point_idx(rapid_decline_point_idx) {
-
-    }
+        : values(std::move(values)), interval(interval), rapid_decline_point_idx(rapid_decline_point_idx) {}
 };
 
 #endif

@@ -24,6 +24,102 @@ cpp_build\daq_capability_test_legacy.exe --help
 cpp_build\daq_capability_test_xnavi.exe --help
 ```
 
+## sample.exe自动选择Instant AI
+
+Python测量接口支持通过外部发射频率阈值选择采集方式：
+
+```python
+sampler.measure(
+    number_of_waveforms=3,
+    emitting_frequency=0.1,
+    instant_ai_frequency_threshold=0.5,
+)
+```
+
+阈值默认为0，此时所有旧调用继续使用Buffered AI。阈值大于0时，发射频率小于等于阈值
+选择legacy Instant AI；高于阈值选择原有Buffered AI。Buffered AI内部原有规则保持不变：
+发射频率低于10Hz使用1MHz，否则使用20MHz。
+
+Instant AI默认将每个等效完整波形重建为100点，平均次数来自
+`number_of_waveforms`。在0.1Hz、3次平均时主体采集时间约30秒。可显式调整目标点数：
+
+```python
+sampler.measure(
+    number_of_waveforms=5,
+    emitting_frequency=0.1,
+    instant_ai_frequency_threshold=0.5,
+    instant_ai_target_points_per_waveform=500,
+)
+```
+
+更低的发射频率不可能快于波形自身周期。Instant AI读取、相位覆盖或重建失败时直接返回
+错误，不会自动回退到Buffered AI。本功能只支持legacy驱动。
+
+## Legacy Instant AI 轮询验证
+
+`instant-ai-polling` 只在 Legacy 版本中实现。它连续调用
+`InstantAiCtrl::ReadAny()`，记录每次读取完成时间、驱动调用耗时、相邻读取间隔和通道值。
+默认轮询 30 秒：
+
+```powershell
+scons -Q cpp_build/daq_capability_test_legacy.exe
+cpp_build\daq_capability_test_legacy.exe instant-ai-polling --device "PCI-1714,BID#0" --channels 0 --range "-5V~5V" --duration 30 --output-dir daq_capability_results\legacy_instant
+```
+
+不指定 `--poll-rate` 时程序无等待地连续调用 `ReadAny()`。要匹配官方界面的
+`sampling rate per-channel = 10 Hz`，使用软件定时轮询：
+
+```powershell
+cpp_build\daq_capability_test_legacy.exe instant-ai-polling --device "PCI-1714,BID#0" --channels 0 --range "-5V~5V" --poll-rate 10 --duration 30 --output-dir daq_capability_results\legacy_instant_10hz
+```
+
+`--poll-rate 10` 使用单调时钟和绝对 deadline，每 100 ms 调用一次 `ReadAny()`；它是每通道的软件
+轮询频率，不是 Buffered AI 硬件采样时钟。多通道在同一次 `ReadAny()` 中读取，因此每个通道均为
+10 点/秒。
+
+成功时 exit `0`，末行 JSON 为 `PASS / INSTANT_AI_POLLING_STABLE`。证据包括成功/失败
+读取次数、平均读取率、平均/P95/P99/最大读取间隔，以及每个通道的最小值、最大值和跨度。
+原始数据位于：
+
+```text
+<evidence.run_directory>\raw\instant_ai_polling.tsv
+```
+
+第一次硬件测试不要设置间隔阈值，先记录实际分布。明确业务门槛后可增加
+`--max-gap-ms <毫秒>`；任一相邻读取完成间隔超过阈值时返回 exit `2` 和
+`INSTANT_AI_GAP_EXCEEDED`。
+
+该 PASS 只证明本次 Windows/驱动环境下软件轮询持续成功，不证明硬件时钟等间隔采样，
+也不能证明两次 `ReadAny()` 之间没有遗漏输入变化。
+
+安装 Python 绘图依赖并生成采样点图：
+
+```powershell
+python -m pip install -r requirements.txt
+python scripts\plot_instant_ai_samples.py "daq_capability_results\legacy_instant\<timestamp>\raw\instant_ai_polling.tsv"
+```
+
+默认在 TSV 旁生成 `instant_ai_polling.png`。X 轴为读取完成时间，Y 轴为电压，每个通道
+独立着色。TSV 始终保留全部数据；图中默认在完整时间范围内均匀抽取最多 100,000 个
+共用索引，并保留首尾点。可选参数：
+
+```powershell
+python scripts\plot_instant_ai_samples.py "daq_capability_results\legacy_instant\<timestamp>\raw\instant_ai_polling.tsv" --output instant.png
+python scripts\plot_instant_ai_samples.py "daq_capability_results\legacy_instant\<timestamp>\raw\instant_ai_polling.tsv" --max-points 50000
+python scripts\plot_instant_ai_samples.py "daq_capability_results\legacy_instant\<timestamp>\raw\instant_ai_polling.tsv" --max-points 0 --show
+```
+
+`--max-points 0` 绘制全部点；`--show` 在保存 PNG 后显示窗口。
+
+## CLion 与代码格式
+
+`src\CMakeLists.txt` 声明 `daq_capability_test_mock`、`daq_capability_test_legacy` 和
+`daq_capability_test_xnavi`，供 CLion 正确索引验证程序的源文件、符号和 include
+路径。正式构建和验收仍使用本 README 中的 SCons 命令。
+
+仓库根目录 `.clang-format` 用于项目自有 C++。批量格式化时排除
+`src\3rdparty\` 和厂商文件 `src\daq_headers\**\bdaqctrl.h`。
+
 ## 自动判定契约
 
 执行命令的 stdout 最后一行是单行 JSON，正式结论由进程退出码和该 JSON 共同给出，不要求人工看波形或 TSV。日志写 stderr；失败原因在末行 JSON 的 `message`、`evidence`，suite 还在 `failed_cases` 中保留每个失败 case 的 `code` 和证据。

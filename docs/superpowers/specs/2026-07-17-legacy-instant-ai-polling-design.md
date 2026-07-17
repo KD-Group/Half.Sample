@@ -15,7 +15,7 @@
 - 不改变现有 Buffered AI adapter、suite、矩阵或正式 `sample.exe`。
 - 不为 Mock 或 XNavi 实现 Instant AI 硬件采集。
 - 本次不实现采集过程中的实时 Python 消费。
-- 增加一个采集完成后读取 TSV 并逐点打印的 Python 脚本。
+- 增加一个采集完成后读取 TSV 并绘制采样点的 Python 脚本。
 
 ## 命令接口
 
@@ -120,24 +120,34 @@ read_index	elapsed_seconds	call_duration_us	interval_us	channel_0...
 只有整个命令 PASS 且所有文件完整落盘时生成 `capture.complete`。失败结果保留已写出的
 诊断文件，但不得生成完成标记。
 
-## Python 离线打印
+## Python 离线绘图
 
-新增脚本：
+新增基于 Matplotlib 的脚本：
 
 ```powershell
-python scripts\print_instant_ai_samples.py `
+python scripts\plot_instant_ai_samples.py `
   daq_capability_results\legacy_instant\<timestamp>\raw\instant_ai_polling.tsv
 ```
 
-脚本使用 Python 标准库读取 TSV，验证固定列和至少一个 `channel_<n>` 列，然后按文件
-顺序逐点打印：
+脚本读取并验证 TSV，以 `elapsed_seconds` 为 X 轴、电压为 Y 轴，为每个
+`channel_<n>` 绘制不同颜色的细线和采样点。默认将 PNG 保存为输入文件旁的
+`instant_ai_polling.png`；`--output` 可指定路径，`--show` 可在保存后显示窗口。
 
-```text
-read_index=0 elapsed_seconds=0.000084 call_duration_us=78.2 interval_us=0 channel_0=1.234
-```
+默认每个通道最多绘制 100,000 点。超过时在完整时间序列中均匀选择索引并保留首尾点；
+所有通道使用相同索引以保持时间对齐。图标题记录总点数和实际绘制点数。`--max-points 0`
+绘制全部点。抽样只影响绘图，不修改或减少 TSV 数据。
 
 空文件、缺少表头、缺少固定列、没有通道列或非数值字段都写入 stderr 并返回非零。
-正常打印完成返回 `0`。脚本不修改采样文件，也不把打印速度用于评价采集连续性。
+正常生成 PNG 返回 `0`。绘图行为不参与采集连续性判定。
+
+## CMake 与格式化
+
+`src/CMakeLists.txt` 增加 Mock、Legacy、XNavi 三个验证 target 及其头文件，使 CLion 能
+正确索引 `src/daq_capability_test`。SCons 仍是正式构建入口。
+
+仓库根目录新增 `.clang-format`，采用 LLVM 基础、4 空格、120 列、Attach 大括号、
+不自动排序 include、左侧指针对齐。完成实现后格式化所有项目自有 `.cpp/.hpp`，排除
+`src/3rdparty/**` 和 `src/daq_headers/**/bdaqctrl.h`。
 
 ## 测试
 
@@ -149,7 +159,9 @@ read_index=0 elapsed_seconds=0.000084 call_duration_us=78.2 interval_us=0 channe
 - 无阈值时只报告最大间隔；有阈值且超限时返回专用 code。
 - `ReadAny` 失败和非有限数据保留专用失败证据。
 - 原始 TSV 的表头、通道编号、首行间隔及完成标记契约。
-- Python 脚本正确打印有效 TSV，并拒绝损坏输入。
+- Python 脚本按相同均匀索引生成有效 PNG，并拒绝损坏输入。
+- CMake 能生成并构建三个 DAQ 验证 target。
+- `clang-format` 检查自有 C/C++ 文件无差异。
 - 现有 Buffered AI、suite、Mock 和 XNavi 测试保持通过。
 
 真实 `InstantAiCtrl` 创建、驱动入口、轮询间隔和硬件通道值必须在 PCI-1714U 目标机上

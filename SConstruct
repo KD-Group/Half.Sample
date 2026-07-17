@@ -13,6 +13,7 @@ sample_sources = [
     'cpp_build/global/global.cpp',
     'cpp_build/processor/processor.cpp',
     'cpp_build/sampler/mock_sampler.cpp',
+    'cpp_build/sampler/instant_ai.cpp',
     'cpp_build/sampler/sampler_factory.cpp',
     'cpp_build/sample.cpp',
 ]
@@ -28,8 +29,25 @@ else:
 sample_program = env.Program('cpp_build/sample.exe', sample_sources)
 Alias('sample.exe', sample_program)
 
+sample_instant_ai_test_sources = [
+    'tests/sample_instant_ai/test_main.cpp',
+    'tests/sample_instant_ai/test_sampling_config.cpp',
+    'tests/sample_instant_ai/test_phase_schedule.cpp',
+    'tests/sample_instant_ai/test_reconstruction.cpp',
+    'src/config/sampling_config.cpp',
+    'src/commander/base.cpp',
+    'src/error/error.cpp',
+    'src/sampler/instant_ai.cpp',
+]
+sample_instant_ai_test = env.Program(
+    'cpp_build/sample_instant_ai_unit_tests.exe',
+    sample_instant_ai_test_sources,
+)
+Alias('sample_instant_ai_unit_tests.exe', sample_instant_ai_test)
+
 daq_common_sources = [
     'src/daq_capability_test/json_result.cpp',
+    'src/daq_capability_test/instant_ai_polling.cpp',
     'src/daq_capability_test/matrix.cpp',
     'src/daq_capability_test/acquisition_runner.cpp',
     'src/daq_capability_test/phase_stitcher.cpp',
@@ -53,6 +71,7 @@ mock_sources = [
 unit_test_sources = [
     'src/daq_capability_test/fake_daq_adapter.cpp',
     'tests/daq_capability_test/test_main.cpp',
+    'tests/daq_capability_test/test_instant_ai_polling.cpp',
     'tests/daq_capability_test/test_matrix.cpp',
     'tests/daq_capability_test/test_results.cpp',
     'tests/daq_capability_test/test_acquisition.cpp',

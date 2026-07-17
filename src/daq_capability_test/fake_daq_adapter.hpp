@@ -8,21 +8,28 @@
 namespace daq_capability_test {
 
 class FakeDaqAdapter : public DaqAdapter {
-public:
+  public:
     FakeDaqAdapter();
     void enqueue_success(const AcquisitionData& data);
-    void enqueue_failure(const std::string& code, const std::string& message = "",
-                         const std::string& stage = "acquire", const std::string& driver_error = "");
-    void enqueue_unsupported(const std::string& code, const std::string& message = "", const std::string& stage = "acquire", const std::string& driver_error = "");
+    void enqueue_failure(const std::string& code, const std::string& message = "", const std::string& stage = "acquire",
+                         const std::string& driver_error = "");
+    void enqueue_unsupported(const std::string& code, const std::string& message = "",
+                             const std::string& stage = "acquire", const std::string& driver_error = "");
     void enqueue_query_success(const CapabilityInfo& value);
-    void enqueue_query_failure(const std::string& code, const std::string& message = "", const std::string& stage = "query", const std::string& driver_error = "");
-    void enqueue_query_unsupported(const std::string& code, const std::string& message = "", const std::string& stage = "query", const std::string& driver_error = "");
+    void enqueue_query_failure(const std::string& code, const std::string& message = "",
+                               const std::string& stage = "query", const std::string& driver_error = "");
+    void enqueue_query_unsupported(const std::string& code, const std::string& message = "",
+                                   const std::string& stage = "query", const std::string& driver_error = "");
     void enqueue_configure_success();
-    void enqueue_configure_failure(const std::string& code, const std::string& message = "", const std::string& stage = "configure", const std::string& driver_error = "");
-    void enqueue_configure_unsupported(const std::string& code, const std::string& message = "", const std::string& stage = "configure", const std::string& driver_error = "");
+    void enqueue_configure_failure(const std::string& code, const std::string& message = "",
+                                   const std::string& stage = "configure", const std::string& driver_error = "");
+    void enqueue_configure_unsupported(const std::string& code, const std::string& message = "",
+                                       const std::string& stage = "configure", const std::string& driver_error = "");
     void enqueue_trigger_success();
-    void enqueue_trigger_failure(const std::string& code, const std::string& message = "", const std::string& stage = "trigger", const std::string& driver_error = "");
-    void enqueue_trigger_unsupported(const std::string& code, const std::string& message = "", const std::string& stage = "trigger", const std::string& driver_error = "");
+    void enqueue_trigger_failure(const std::string& code, const std::string& message = "",
+                                 const std::string& stage = "trigger", const std::string& driver_error = "");
+    void enqueue_trigger_unsupported(const std::string& code, const std::string& message = "",
+                                     const std::string& stage = "trigger", const std::string& driver_error = "");
 
     AdapterResult<CapabilityInfo> query_capabilities(const std::string& device) override;
     AdapterResult<OperationInfo> configure(const AcquisitionRequest& request) override;
@@ -40,18 +47,18 @@ public:
     const std::vector<AcquisitionRequest>& configure_requests() const { return configure_requests_; }
     const std::vector<TriggerRequest>& trigger_requests() const { return trigger_requests_; }
 
-private:
+  private:
     AdapterResult<AcquisitionData> generated(const AcquisitionRequest& request);
-    std::deque<AdapterResult<AcquisitionData> > acquisitions_;
-    std::deque<AdapterResult<CapabilityInfo> > queries_;
-    std::deque<AdapterResult<OperationInfo> > configurations_, triggers_;
+    std::deque<AdapterResult<AcquisitionData>> acquisitions_;
+    std::deque<AdapterResult<CapabilityInfo>> queries_;
+    std::deque<AdapterResult<OperationInfo>> configurations_, triggers_;
     std::vector<AcquisitionRequest> acquisition_requests_;
     std::vector<std::string> queried_devices_;
     std::vector<AcquisitionRequest> configure_requests_;
     std::vector<TriggerRequest> trigger_requests_;
     int query_calls_, configure_calls_, acquire_calls_, trigger_calls_, stop_calls_;
     unsigned int generated_acquisitions_;
-    std::map<std::string,unsigned int> scenario_acquisitions_;
+    std::map<std::string, unsigned int> scenario_acquisitions_;
 };
 
-}  // namespace daq_capability_test
+} // namespace daq_capability_test

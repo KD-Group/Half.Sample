@@ -58,4 +58,4 @@ struct StitchResult {
 
 StitchResult stitch_phase_waveforms(const std::vector<Segment>& segments, const StitchConfig& config);
 
-}  // namespace daq_capability_test
+} // namespace daq_capability_test

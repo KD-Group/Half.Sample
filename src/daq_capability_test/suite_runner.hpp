@@ -16,24 +16,27 @@ enum class SuiteScopeKind { All, Case, From };
 struct SuiteScope {
     SuiteScopeKind kind;
     std::string case_name;
-    static SuiteScope all() { return SuiteScope{SuiteScopeKind::All,std::string()}; }
-    static SuiteScope single(const std::string& name) { return SuiteScope{SuiteScopeKind::Case,name}; }
-    static SuiteScope from(const std::string& name) { return SuiteScope{SuiteScopeKind::From,name}; }
+    static SuiteScope all() { return SuiteScope{SuiteScopeKind::All, std::string()}; }
+    static SuiteScope single(const std::string& name) { return SuiteScope{SuiteScopeKind::Case, name}; }
+    static SuiteScope from(const std::string& name) { return SuiteScope{SuiteScopeKind::From, name}; }
 };
 
-struct SuiteCaseResult { bool executed=false; CommandResult result; };
+struct SuiteCaseResult {
+    bool executed = false;
+    CommandResult result;
+};
 struct SuiteResult {
-    std::map<std::string,SuiteCaseResult> cases;
+    std::map<std::string, SuiteCaseResult> cases;
     std::set<std::string> supported_strategies;
-    std::map<std::string,std::string> rejected_strategies;
+    std::map<std::string, std::string> rejected_strategies;
     CommandResult command;
     const SuiteCaseResult& case_result(const std::string& name) const;
 };
 
 class CaseExecutor {
-public:
+  public:
     virtual ~CaseExecutor() {}
-    virtual CommandResult execute(const MatrixCase& matrix_case)=0;
+    virtual CommandResult execute(const MatrixCase& matrix_case) = 0;
 };
 
 std::string default_success_code(const std::string& case_name);
@@ -52,4 +55,4 @@ std::string suite_result_json(const SuiteResult& result);
 SummaryRecord make_acquisition_summary(const MatrixCase& matrix_case, const AcquisitionRequest& request,
                                        unsigned int repetition, const AcquisitionData& data, bool trigger);
 
-}  // namespace daq_capability_test
+} // namespace daq_capability_test

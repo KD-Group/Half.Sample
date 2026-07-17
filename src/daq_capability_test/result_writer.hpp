@@ -1,6 +1,7 @@
 #pragma once
 
 #include "daq_capability_test/types.hpp"
+#include "daq_capability_test/instant_ai_polling.hpp"
 
 #include <functional>
 #include <memory>
@@ -9,7 +10,10 @@
 
 namespace daq_capability_test {
 
-struct RawChannel { std::string name; std::vector<double> samples; };
+struct RawChannel {
+    std::string name;
+    std::vector<double> samples;
+};
 struct EnvironmentRecord {
     std::string executable_variant, build_id, os_architecture, process_architecture;
     std::string runtime_path, runtime_version, device_description, arguments;
@@ -50,7 +54,7 @@ struct FsResult {
 };
 
 class FileOperations {
-public:
+  public:
     virtual ~FileOperations() {}
     virtual FsResult create_directory(const std::string& path) = 0;
     virtual FsResult exists(const std::string& path) = 0;
@@ -70,10 +74,10 @@ struct DirectoryPlan {
 DirectoryPlan plan_directories(const std::string& path, PathFlavor flavor);
 FsResult ensure_directory_path(FileOperations& operations, const std::string& path, PathFlavor flavor,
                                std::string& failed_path);
-}  // namespace detail
+} // namespace detail
 
 class ResultWriter {
-public:
+  public:
     typedef std::function<std::string()> Clock;
     ResultWriter(const std::string& root, Clock clock,
                  std::shared_ptr<FileOperations> operations = std::shared_ptr<FileOperations>());
@@ -85,10 +89,11 @@ public:
     CommandResult write_log(const std::vector<std::string>& lines);
     CommandResult write_raw(const std::string& test_name, unsigned int repetition,
                             const std::vector<RawChannel>& channels);
+    CommandResult write_instant_ai_raw(const std::vector<int>& channels, const std::vector<InstantAiRead>& reads);
     CommandResult write_config_snapshot(const std::string& source, const std::string& filename);
     CommandResult write_completion_marker();
 
-private:
+  private:
     CommandResult atomic_write(const std::string& target, const std::string& data);
     CommandResult failure(const std::string& path, const std::string& stage, const std::string& error,
                           const std::string& code = "OUTPUT_WRITE_FAILED") const;
@@ -99,4 +104,4 @@ private:
     std::shared_ptr<FileOperations> operations_;
 };
 
-}  // namespace daq_capability_test
+} // namespace daq_capability_test

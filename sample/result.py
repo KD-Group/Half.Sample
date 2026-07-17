@@ -16,6 +16,11 @@ class Result:
         "voltage_not_enough": "电压不足",
         "wave_not_found": "未找到波形",
         "appropriate_wave_not_found": "未找到合适波形",
+        "invalid_instant_ai_config": "Instant AI配置无效",
+        "instant_ai_coverage_insufficient": "Instant AI相位覆盖不足",
+        "instant_ai_schedule_timeout": "Instant AI采集超时",
+        "instant_ai_alignment_failed": "Instant AI波形对齐失败",
+        "instant_ai_waveform_count_insufficient": "Instant AI完整波形数量不足",
 
         # 警告类错误
         "warning_intr_not_available": "中断资源不可用",
@@ -78,6 +83,9 @@ class Result:
         self.waveform_length = 0  # 一个完整波形的点数(包括上升沿和下降沿)
         self.valid_length = 0  # 有效的波形点数(仅包含上升沿部分)
         self.number_of_waveforms = 0  # 波形平均次数
+        self.acquisition_mode = ""
+        self.instant_ai_late_reads = 0
+        self.instant_ai_interpolated_bins = 0
         self.wave = []
         self.time_line = []
         self.estimate = []

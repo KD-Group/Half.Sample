@@ -1,13 +1,14 @@
 #pragma once
 
+#include "daq_capability_test/instant_ai_polling.hpp"
+
 #include <string>
 #include <vector>
 #include <algorithm>
 
 namespace daq_capability_test {
 
-template <typename T>
-struct AdapterResult {
+template <typename T> struct AdapterResult {
     bool success = false;
     bool unsupported = false;
     std::string code;
@@ -66,7 +67,9 @@ struct AcquisitionRequest {
     double mock_signal_frequency_hz = 1000.0;
 };
 
-struct ChannelData { std::vector<double> samples; };
+struct ChannelData {
+    std::vector<double> samples;
+};
 
 struct AcquisitionData {
     std::vector<ChannelData> channels;
@@ -84,8 +87,12 @@ struct AcquisitionData {
     std::vector<std::string> evidence;
 };
 
-inline void map_acquisition_timing(AcquisitionData& data,unsigned int returned_points,double actual_rate,double wall_elapsed)
-{data.duration_seconds=returned_points/actual_rate;data.wall_elapsed_seconds=wall_elapsed;data.trigger_wait_seconds=(std::max)(0.0,wall_elapsed-data.duration_seconds);}
+inline void map_acquisition_timing(AcquisitionData& data, unsigned int returned_points, double actual_rate,
+                                   double wall_elapsed) {
+    data.duration_seconds = returned_points / actual_rate;
+    data.wall_elapsed_seconds = wall_elapsed;
+    data.trigger_wait_seconds = (std::max)(0.0, wall_elapsed - data.duration_seconds);
+}
 
 struct TriggerRequest {
     std::string source;
@@ -96,13 +103,21 @@ struct TriggerRequest {
 };
 
 class DaqAdapter {
-public:
+  public:
     virtual ~DaqAdapter() {}
     virtual AdapterResult<CapabilityInfo> query_capabilities(const std::string& device) = 0;
     virtual AdapterResult<OperationInfo> configure(const AcquisitionRequest& request) = 0;
     virtual AdapterResult<AcquisitionData> acquire_once(const AcquisitionRequest& request) = 0;
     virtual AdapterResult<OperationInfo> configure_trigger(const TriggerRequest& request) = 0;
+    virtual AdapterResult<InstantAiPollingData> poll_instant_ai(const InstantAiPollingRequest&) {
+        AdapterResult<InstantAiPollingData> result;
+        result.unsupported = true;
+        result.code = "INSTANT_AI_UNSUPPORTED";
+        result.message = "Instant AI polling is only available in the Legacy build";
+        result.stage = "variant";
+        return result;
+    }
     virtual void stop() noexcept = 0;
 };
 
-}  // namespace daq_capability_test
+} // namespace daq_capability_test

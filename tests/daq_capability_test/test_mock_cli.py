@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import unittest
 
+from .subprocess_compat import run_captured
+
 
 ROOT = Path(__file__).resolve().parents[2]
 EXE = ROOT / "cpp_build" / "daq_capability_test_mock.exe"
@@ -16,9 +18,9 @@ FAILURES = ROOT / "src" / "daq_capability_test" / "mock_failures.tsv"
 class MockCliTest(unittest.TestCase):
     def run_validation_entrypoint(self, *arguments):
         script = ROOT / "scripts" / "daq_validation.ps1"
-        return subprocess.run(
+        return run_captured(
             ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), *arguments],
-            cwd=ROOT, text=True, encoding="utf-8", capture_output=True, check=False)
+            cwd=ROOT, encoding="utf-8", check=False)
 
     def test_validation_script_direct_entrypoint_runs_mock_suite(self):
         with tempfile.TemporaryDirectory(prefix="daq_ps_", dir=ROOT / "cpp_build") as directory:
@@ -77,9 +79,9 @@ class MockCliTest(unittest.TestCase):
     def run_powershell_validation(self, invocation):
         script = ROOT / "scripts" / "daq_validation.ps1"
         command = "$ErrorActionPreference='Stop'; . '{}'; {}; 'SCRIPT_ASSERTION_PASSED'".format(script, invocation)
-        return subprocess.run(
+        return run_captured(
             ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
-            cwd=ROOT, text=True, encoding="utf-8", capture_output=True, check=False)
+            cwd=ROOT, encoding="utf-8", check=False)
 
     def test_validation_script_is_the_single_function_source_and_keeps_stderr_separate(self):
         script = (ROOT / "scripts" / "daq_validation.ps1").read_text(encoding="utf-8")
@@ -219,8 +221,7 @@ class MockCliTest(unittest.TestCase):
             self.assertIn(marker, completed.stdout)
 
     def test_help_lists_supported_commands_and_suite_scopes(self):
-        completed = subprocess.run([str(EXE), "--help"], cwd=ROOT, text=True, encoding="utf-8",
-                                   capture_output=True, check=False)
+        completed = run_captured([str(EXE), "--help"], cwd=ROOT, encoding="utf-8", check=False)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         for text in ("capability", "acquire", "trigger", "phase-stitch capture",
                      "phase-stitch reconstruct", "suite", "--all", "--case", "--from"):
@@ -242,7 +243,7 @@ class MockCliTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, output, True)
         command = [str(EXE), "suite", "--config", str(matrix), "--output-dir", str(output)]
         command += ["--case", case] if case else ["--all"]
-        completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
+        completed = run_captured(command, cwd=ROOT, check=False)
         payload = json.loads(completed.stdout.strip().splitlines()[-1])
         return completed, payload, output
 
@@ -259,8 +260,9 @@ class MockCliTest(unittest.TestCase):
 
     def test_fake_uses_explicit_acquisition_role(self):
         source = (ROOT / "src" / "daq_capability_test" / "fake_daq_adapter.cpp").read_text(encoding="utf-8")
-        self.assertIn('request.role=="calibration"', source)
-        self.assertNotIn("points_per_channel>300", source)
+        compact_source = "".join(source.split())
+        self.assertIn('request.role=="calibration"', compact_source)
+        self.assertNotIn("points_per_channel>300", compact_source)
 
     def test_failure_matrix_catalogs_every_scenario(self):
         catalog = {row["scenario"] for row in self.failure_manifest()}

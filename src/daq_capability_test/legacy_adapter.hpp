@@ -13,22 +13,21 @@
 namespace daq_capability_test {
 
 inline bool select_legacy_supported_voltage_range(const std::string& requested,
-                                                   const std::vector<std::string>& supported,
-                                                   size_t& selected_index)
-{
+                                                  const std::vector<std::string>& supported, size_t& selected_index) {
     std::string normalized;
     for (size_t index = 0; index < requested.size(); ++index) {
-        if (requested[index] != ' ' && requested[index] != '\t') normalized += requested[index];
+        if (requested[index] != ' ' && requested[index] != '\t')
+            normalized += requested[index];
     }
     const size_t separator = normalized.find('~');
-    if (separator == std::string::npos || normalized.find('~', separator + 1) != std::string::npos ||
-        separator == 0 || separator + 1 >= normalized.size() ||
-        (normalized[separator - 1] != 'V' && normalized[separator - 1] != 'v') ||
-        (normalized.back() != 'V' && normalized.back() != 'v')) return false;
+    if (separator == std::string::npos || normalized.find('~', separator + 1) != std::string::npos || separator == 0 ||
+        separator + 1 >= normalized.size() || (normalized[separator - 1] != 'V' && normalized[separator - 1] != 'v') ||
+        (normalized.back() != 'V' && normalized.back() != 'v'))
+        return false;
     double low = 0.0, high = 0.0;
     if (!parse_voltage_number(normalized.substr(0, separator - 1), low) ||
-        !parse_voltage_number(normalized.substr(separator + 1, normalized.size() - separator - 2), high) ||
-        low >= high) return false;
+        !parse_voltage_number(normalized.substr(separator + 1, normalized.size() - separator - 2), high) || low >= high)
+        return false;
     for (size_t index = 0; index < supported.size(); ++index) {
         if (equivalent_voltage_range(requested, supported[index])) {
             selected_index = index;
@@ -38,21 +37,19 @@ inline bool select_legacy_supported_voltage_range(const std::string& requested,
     return false;
 }
 
-inline std::vector<std::vector<double> > deinterleave_legacy_samples(
-    const std::vector<double>& interleaved, unsigned int channel_count)
-{
+inline std::vector<std::vector<double>> deinterleave_legacy_samples(const std::vector<double>& interleaved,
+                                                                    unsigned int channel_count) {
     if (!channel_count || interleaved.size() % channel_count) {
         throw std::invalid_argument("invalid interleaved shape");
     }
-    std::vector<std::vector<double> > channels(channel_count);
+    std::vector<std::vector<double>> channels(channel_count);
     for (size_t point = 0; point < interleaved.size(); ++point) {
         channels[point % channel_count].push_back(interleaved[point]);
     }
     return channels;
 }
 
-inline CapabilityInfo legacy_capability_from_scan_limit(unsigned int scan_limit)
-{
+inline CapabilityInfo legacy_capability_from_scan_limit(unsigned int scan_limit) {
     CapabilityInfo capability;
     capability.max_scan_count = scan_limit;
     capability.max_points_per_channel = scan_limit;
@@ -60,25 +57,27 @@ inline CapabilityInfo legacy_capability_from_scan_limit(unsigned int scan_limit)
 }
 
 inline void write_legacy_interleaved_chunk(const std::vector<double>& chunk, size_t global_offset,
-                                           std::vector<std::vector<double> >& channels)
-{
-    if (channels.empty()) throw std::invalid_argument("channel count is zero");
+                                           std::vector<std::vector<double>>& channels) {
+    if (channels.empty())
+        throw std::invalid_argument("channel count is zero");
     for (size_t index = 0; index < chunk.size(); ++index) {
         const size_t global = global_offset + index;
         const size_t channel = global % channels.size();
         const size_t sample = global / channels.size();
-        if (sample >= channels[channel].size()) throw std::out_of_range("chunk exceeds destination");
+        if (sample >= channels[channel].size())
+            throw std::out_of_range("chunk exceeds destination");
         channels[channel][sample] = chunk[index];
     }
 }
 
-inline bool legacy_demo_layout_matches_ranges(const std::vector<double>& values, double tolerance)
-{
-    if (values.size() < 16 || values.size() % 2) return false;
+inline bool legacy_demo_layout_matches_ranges(const std::vector<double>& values, double tolerance) {
+    if (values.size() < 16 || values.size() % 2)
+        return false;
     bool even_above_one = false;
     for (size_t index = 0; index < values.size(); ++index) {
         if (index % 2) {
-            if (values[index] < -tolerance || values[index] > 1.0 + tolerance) return false;
+            if (values[index] < -tolerance || values[index] > 1.0 + tolerance)
+                return false;
         } else if (values[index] > 1.0 + tolerance) {
             even_above_one = true;
         }
@@ -86,50 +85,77 @@ inline bool legacy_demo_layout_matches_ranges(const std::vector<double>& values,
     return even_above_one;
 }
 
-inline AdapterResult<OperationInfo> validate_legacy_config_readback(
-    const OperationInfo& requested, const OperationInfo& actual)
-{
+inline AdapterResult<OperationInfo> validate_legacy_config_readback(const OperationInfo& requested,
+                                                                    const OperationInfo& actual) {
     AdapterResult<OperationInfo> result;
     std::string field, requested_value, actual_value;
     if (requested.channel_start != actual.actual_channel_start) {
-        field="channel_start"; requested_value=std::to_string(requested.channel_start); actual_value=std::to_string(actual.actual_channel_start);
+        field = "channel_start";
+        requested_value = std::to_string(requested.channel_start);
+        actual_value = std::to_string(actual.actual_channel_start);
     } else if (requested.channel_count != actual.actual_channel_count) {
-        field="channel_count"; requested_value=std::to_string(requested.channel_count); actual_value=std::to_string(actual.actual_channel_count);
+        field = "channel_count";
+        requested_value = std::to_string(requested.channel_count);
+        actual_value = std::to_string(actual.actual_channel_count);
     } else if (requested.points_per_channel != actual.actual_samples) {
-        field="samples"; requested_value=std::to_string(requested.points_per_channel); actual_value=std::to_string(actual.actual_samples);
+        field = "samples";
+        requested_value = std::to_string(requested.points_per_channel);
+        actual_value = std::to_string(actual.actual_samples);
     } else {
         const double rate_tolerance = (std::max)(0.01, std::fabs(requested.sample_rate_hz) * 1.0e-6);
         if (std::fabs(requested.sample_rate_hz - actual.sample_rate_hz) > rate_tolerance) {
-            field="sample_rate_hz"; requested_value=std::to_string(requested.sample_rate_hz); actual_value=std::to_string(actual.sample_rate_hz);
-        } else if (!equivalent_voltage_ranges(requested.actual_ranges,actual.actual_ranges)) {
-            field="value_ranges"; requested_value="configured channel ranges"; actual_value="readback channel ranges";
+            field = "sample_rate_hz";
+            requested_value = std::to_string(requested.sample_rate_hz);
+            actual_value = std::to_string(actual.sample_rate_hz);
+        } else if (!equivalent_voltage_ranges(requested.actual_ranges, actual.actual_ranges)) {
+            field = "value_ranges";
+            requested_value = "configured channel ranges";
+            actual_value = "readback channel ranges";
         }
     }
-    if (field.empty()) { result.success=true; result.value=actual; return result; }
-    result.code="CONFIG_READBACK_MISMATCH"; result.stage="configure_readback";
-    result.message=field + " requested=" + requested_value + " actual=" + actual_value;
-    result.evidence.push_back("field="+field); result.evidence.push_back("requested="+requested_value); result.evidence.push_back("actual="+actual_value);
+    if (field.empty()) {
+        result.success = true;
+        result.value = actual;
+        return result;
+    }
+    result.code = "CONFIG_READBACK_MISMATCH";
+    result.stage = "configure_readback";
+    result.message = field + " requested=" + requested_value + " actual=" + actual_value;
+    result.evidence.push_back("field=" + field);
+    result.evidence.push_back("requested=" + requested_value);
+    result.evidence.push_back("actual=" + actual_value);
     return result;
 }
 
-inline AdapterResult<OperationInfo> classify_legacy_missing_export(const std::string& export_name)
-{
+inline AdapterResult<OperationInfo> classify_legacy_missing_export(const std::string& export_name) {
     AdapterResult<OperationInfo> result;
     const std::string core_export = std::string("AdxBuffered") + "AiCtrlCreate";
-    result.code = export_name == core_export
-        ? "HEADER_RUNTIME_INCOMPATIBLE" : "ENTRY_POINT_MISSING";
+    result.code = export_name == core_export ? "HEADER_RUNTIME_INCOMPATIBLE" : "ENTRY_POINT_MISSING";
     result.stage = "runtime_exports";
     result.message = "required legacy runtime export is missing: " + export_name;
     return result;
 }
 
-inline std::vector<std::string> legacy_required_runtime_exports()
-{
+inline std::vector<std::string> legacy_required_runtime_exports() {
     return {std::string("AdxBuffered") + "AiCtrlCreate", "AdxEnumToString", "AdxStringToEnum"};
 }
 
+inline std::vector<std::string> legacy_instant_ai_required_runtime_exports() {
+    return {std::string("AdxInstant") + "AiCtrlCreate"};
+}
+
+inline bool instant_ai_channels_are_contiguous(const std::vector<int>& channels) {
+    if (channels.empty())
+        return false;
+    for (size_t index = 1; index < channels.size(); ++index) {
+        if (channels[index] != channels[index - 1] + 1)
+            return false;
+    }
+    return true;
+}
+
 class LegacyDaqAdapter : public DaqAdapter {
-public:
+  public:
     LegacyDaqAdapter();
     ~LegacyDaqAdapter() override;
     LegacyDaqAdapter(const LegacyDaqAdapter&) = delete;
@@ -139,12 +165,13 @@ public:
     AdapterResult<OperationInfo> configure(const AcquisitionRequest& request) override;
     AdapterResult<AcquisitionData> acquire_once(const AcquisitionRequest& request) override;
     AdapterResult<OperationInfo> configure_trigger(const TriggerRequest& request) override;
+    AdapterResult<InstantAiPollingData> poll_instant_ai(const InstantAiPollingRequest& request) override;
     AdapterResult<AcquisitionData> verify_demo_interleaving(const std::string& device);
     void stop() noexcept override;
 
-private:
+  private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace daq_capability_test
+} // namespace daq_capability_test
