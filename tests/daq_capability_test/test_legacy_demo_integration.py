@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from .subprocess_compat import run_captured
+from .subprocess_compat import daq_demo_unavailable, run_captured
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,8 +34,8 @@ class LegacyDemoIntegrationTest(unittest.TestCase):
             matrix.write_text("\n".join(rows) + "\n", encoding="utf-8")
             completed = run_captured([str(cli), "suite", "--config", str(matrix), "--all",
                                       "--output-dir", directory], cwd=ROOT, timeout=30)
-            if "DEVICE_NOT_FOUND" in completed.stdout + completed.stderr:
-                self.skipTest("DemoDevice is unavailable")
+            if daq_demo_unavailable(completed.stdout + completed.stderr):
+                self.skipTest("DAQ runtime or DemoDevice is unavailable")
             self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
             result = json.loads(completed.stdout.splitlines()[-1])
             case = result["cases"]["single_channel_boundary"]
@@ -57,8 +57,8 @@ class LegacyDemoIntegrationTest(unittest.TestCase):
                 cwd=ROOT, timeout=30,
             )
             output = completed.stdout + completed.stderr
-            if "DEVICE_NOT_FOUND" in output:
-                self.skipTest("DemoDevice is unavailable")
+            if daq_demo_unavailable(output):
+                self.skipTest("DAQ runtime or DemoDevice is unavailable")
             self.assertEqual(0, completed.returncode, f"repetition {repetition + 1}: {output}")
             self.assertIn("LAYOUT_VERIFIED_BY_DEMO", output)
             self.assertIn("layout=scan_major_interleaved", output)

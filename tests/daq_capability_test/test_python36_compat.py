@@ -2,11 +2,19 @@ import ast
 from pathlib import Path
 import unittest
 
+from .subprocess_compat import daq_demo_unavailable
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class Python36CompatibilityTest(unittest.TestCase):
+    def test_missing_daq_runtime_marks_demo_as_unavailable(self):
+        self.assertTrue(daq_demo_unavailable("code=RUNTIME_NOT_FOUND stage=runtime_load"))
+        self.assertTrue(daq_demo_unavailable('{"code":"RUNTIME_NOT_FOUND"}'))
+        self.assertTrue(daq_demo_unavailable("DEVICE_NOT_FOUND"))
+        self.assertFalse(daq_demo_unavailable("LAYOUT_VERIFIED_BY_DEMO"))
+
     def test_subprocess_run_uses_python36_compatible_keywords(self):
         violations = []
         for source_root in (ROOT / "tests", ROOT / "scripts"):
