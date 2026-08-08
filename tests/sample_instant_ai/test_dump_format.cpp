@@ -9,6 +9,11 @@
 #include <sstream>
 #include <string>
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <Windows.h>
+#endif
+
 namespace {
 const char* const v2_path = "cpp_build/instant-ai-v2-test.csv";
 const char* const fixture_path = "cpp_build/instant-ai-fixture-test.csv";
@@ -336,6 +341,50 @@ void test_dump_format() {
         assert(!Sampler::Sampler::dump_origin_data(config, result));
         assert(read_text(fixture_path) == "keep-finite-original");
     }
+
+#ifdef _WIN32
+    {
+        const std::string unicode_path = "cpp_build/\xE6\xB5\x8B\xE9\x87\x8F.csv";
+        Config::SamplingConfig config;
+        assert(config.update(1, 0.05, 0.1, 100, 10.0));
+        config.dump_file_path = unicode_path;
+        Result::SamplingResult original(false);
+        original.instant_ai_actual_duration_seconds = 40.0;
+        original.instant_ai_readings.push_back({0.0, 0.0, 5.0, true, 0});
+        assert(Sampler::Sampler::dump_origin_data(config, original));
+        assert(GetFileAttributesW(L"cpp_build/\x6D4B\x91CF.csv") != INVALID_FILE_ATTRIBUTES);
+
+        Config::SamplingConfig replay_config;
+        replay_config.dump_file_path = unicode_path;
+        Result::SamplingResult replay(false);
+        assert(Sampler::Sampler::load_origin_data(replay_config, replay));
+        assert(replay.instant_ai_readings.size() == 1);
+        assert(replay.instant_ai_readings[0].voltage == 5.0);
+
+        Config::SamplingConfig invalid_source_config;
+        assert(invalid_source_config.update(1, 100.0));
+        invalid_source_config.sampling_length_per_sample = 3;
+        invalid_source_config.dump_file_path = unicode_path;
+        Result::SamplingResult invalid_source(false);
+        invalid_source.totalSamplingBuffer.assign(2, 1.0);
+        assert(!Sampler::Sampler::dump_origin_data(invalid_source_config, invalid_source));
+        assert(Sampler::Sampler::load_origin_data(replay_config, replay));
+        assert(replay.instant_ai_readings[0].voltage == 5.0);
+
+        const std::string invalid_utf8 = std::string("cpp_build/invalid-") + static_cast<char>(0xff) + ".csv";
+        config.dump_file_path = invalid_utf8;
+        original.error_code = Error::SUCCESS;
+        assert(!Sampler::Sampler::dump_origin_data(config, original));
+        assert(original.error_code == Error::FILE_NOT_FOUND);
+        Config::SamplingConfig invalid_load_config;
+        invalid_load_config.dump_file_path = invalid_utf8;
+        Result::SamplingResult invalid_load(false);
+        assert(!Sampler::Sampler::load_origin_data(invalid_load_config, invalid_load));
+        assert(invalid_load.error_code == Error::FILE_NOT_FOUND);
+        assert(Sampler::Sampler::load_origin_data(replay_config, replay));
+        _wremove(L"cpp_build/\x6D4B\x91CF.csv");
+    }
+#endif
 
     {
         std::ostringstream oversized;

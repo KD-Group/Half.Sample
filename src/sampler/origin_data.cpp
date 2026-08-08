@@ -227,29 +227,76 @@ unsigned long process_id() {
 #endif
 }
 
+#ifdef _WIN32
+bool widen_path(const std::string& path, std::wstring& wide) {
+    const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, nullptr, 0);
+    if (length <= 0) return false;
+    wide.assign(static_cast<std::size_t>(length), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, &wide[0], length) <= 0) return false;
+    wide.resize(static_cast<std::size_t>(length - 1));
+    return true;
+}
+
+bool path_supported(const std::string& path) {
+    std::wstring wide;
+    return widen_path(path, wide);
+}
+
+bool open_input(const std::string& path, std::ifstream& input) {
+    std::wstring wide;
+    if (!widen_path(path, wide)) return false;
+    input.open(wide.c_str(), std::ios::binary);
+    return input.is_open();
+}
+
+bool open_output(const std::string& path, std::ofstream& output) {
+    std::wstring wide;
+    if (!widen_path(path, wide)) return false;
+    output.open(wide.c_str(), std::ios::binary | std::ios::trunc);
+    return output.is_open();
+}
+
+bool path_exists(const std::string& path) {
+    std::wstring wide;
+    return widen_path(path, wide) && GetFileAttributesW(wide.c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+void remove_path(const std::string& path) {
+    std::wstring wide;
+    if (widen_path(path, wide)) _wremove(wide.c_str());
+}
+#else
+bool path_supported(const std::string&) { return true; }
+
+bool open_input(const std::string& path, std::ifstream& input) {
+    input.open(path.c_str(), std::ios::binary);
+    return input.is_open();
+}
+
+bool open_output(const std::string& path, std::ofstream& output) {
+    output.open(path.c_str(), std::ios::binary | std::ios::trunc);
+    return output.is_open();
+}
+
+bool path_exists(const std::string& path) {
+    std::ifstream input;
+    input.imbue(std::locale::classic());
+    return open_input(path, input);
+}
+
+void remove_path(const std::string& path) { std::remove(path.c_str()); }
+#endif
+
 std::string unique_temporary_path(const std::string& destination) {
     static std::atomic<unsigned long long> sequence{0};
     for (int attempt = 0; attempt < 100; ++attempt) {
         std::ostringstream name;
         name.imbue(std::locale::classic());
         name << destination << ".half-sample-tmp." << process_id() << '.' << sequence.fetch_add(1);
-        std::ifstream existing(name.str(), std::ios::binary);
-        existing.imbue(std::locale::classic());
-        if (!existing.is_open()) return name.str();
+        if (!path_exists(name.str())) return name.str();
     }
     return std::string();
 }
-
-#ifdef _WIN32
-bool widen_path(const std::string& path, std::wstring& wide) {
-    const int length = MultiByteToWideChar(CP_ACP, 0, path.c_str(), -1, nullptr, 0);
-    if (length <= 0) return false;
-    wide.assign(static_cast<std::size_t>(length), L'\0');
-    if (MultiByteToWideChar(CP_ACP, 0, path.c_str(), -1, &wide[0], length) <= 0) return false;
-    wide.resize(static_cast<std::size_t>(length - 1));
-    return true;
-}
-#endif
 
 bool replace_atomically(const std::string& temporary, const std::string& destination) {
 #ifdef _WIN32
@@ -393,11 +440,15 @@ namespace Sampler {
 bool Sampler::dump_origin_data(const Config::SamplingConfig& config, Result::SamplingResult& result) {
     if (config.dump_file_path.empty()) return true;
     if (!valid_dump_source(config, result)) return fail_dump(result, Error::INVALID_INSTANT_AI_CONFIG);
+    if (!path_supported(config.dump_file_path)) return fail_dump(result);
     const std::string temporary_path = unique_temporary_path(config.dump_file_path);
     if (temporary_path.empty()) return fail_dump(result);
-    std::ofstream output(temporary_path, std::ios::binary | std::ios::trunc);
+    std::ofstream output;
     output.imbue(std::locale::classic());
-    if (!output.is_open()) return fail_dump(result);
+    if (!open_output(temporary_path, output)) {
+        remove_path(temporary_path);
+        return fail_dump(result);
+    }
     if (config.is_instant()) {
         output << instant_v2_marker << '\n' << "emitting_frequency=";
         write_metadata_number(output, config.emitting_frequency);
@@ -428,11 +479,11 @@ bool Sampler::dump_origin_data(const Config::SamplingConfig& config, Result::Sam
     const bool write_succeeded = output.good();
     output.close();
     if (!write_succeeded || !output.good()) {
-        std::remove(temporary_path.c_str());
+        remove_path(temporary_path);
         return fail_dump(result);
     }
     if (!replace_atomically(temporary_path, config.dump_file_path)) {
-        std::remove(temporary_path.c_str());
+        remove_path(temporary_path);
         return fail_dump(result);
     }
     return true;
@@ -443,9 +494,13 @@ bool Sampler::load_origin_data(Config::SamplingConfig& config, Result::SamplingR
         set_load_error(result, Error::FILE_NOT_FOUND);
         return false;
     }
-    std::ifstream input(config.dump_file_path, std::ios::binary);
+    if (!path_supported(config.dump_file_path)) {
+        set_load_error(result, Error::FILE_NOT_FOUND);
+        return false;
+    }
+    std::ifstream input;
     input.imbue(std::locale::classic());
-    if (!input.is_open()) {
+    if (!open_input(config.dump_file_path, input)) {
         set_load_error(result, Error::FILE_NOT_FOUND);
         return false;
     }

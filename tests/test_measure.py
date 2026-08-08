@@ -1,4 +1,5 @@
 import math
+import sys
 import time
 import tempfile
 import unittest
@@ -319,6 +320,27 @@ class MyTestCase(unittest.TestCase):
             self.assertAlmostEqual(replay.instant_ai_planned_duration_seconds, 80.0)
             self.assertAlmostEqual(replay.instant_ai_actual_duration_seconds, 80.0)
             self.assertEqual(replay.instant_ai_late_reads, 0)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows UTF-16 filesystem path contract")
+    def test_windows_unicode_path_dump_and_process_are_atomic(self):
+        sampler.set_sampler_value("mock_noise", 0)
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
+            unicode_directory = Path(directory) / "采集数据"
+            unicode_directory.mkdir()
+            dump_path = unicode_directory / "测量.csv"
+            sampler.dump(str(dump_path), 3, 0.05, instant_ai_frequency_threshold=0.1)
+            while sampler.is_measuring:
+                time.sleep(0.01)
+            captured = sampler.query()
+            self.assertTrue(captured.success, captured.message)
+            self.assertTrue(dump_path.is_file())
+            self.assertEqual(list(unicode_directory.glob("*.half-sample-tmp.*")), [])
+
+            sampler.process(str(dump_path))
+            replay = sampler.query()
+            self.assertTrue(replay.success, replay.message)
+            self.assertEqual(replay.instant_ai_complete_waveforms, 3)
+            self.assertEqual(list(unicode_directory.glob("*.half-sample-tmp.*")), [])
 
     def test_failed_process_clears_previous_wave_and_keeps_stable_error(self):
         sampler.set_sampler_value("mock_noise", 0)
