@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include "real_sampler.hpp"
+#include "controller_owner.hpp"
 
 #include "Windows.h"
 #include "../daq_headers/legacy/bdaqctrl.h"
@@ -14,20 +15,6 @@ using namespace Automation::BDaq;
 
 namespace {
 const wchar_t* const device_description = L"PCI-1714,BID#0";
-
-template <typename Controller> class ControllerOwner {
-  public:
-    explicit ControllerOwner(Controller* value) : value_(value) {}
-    ~ControllerOwner() { if (value_) value_->Dispose(); }
-    Controller* operator->() const { return value_; }
-    Controller* get() const { return value_; }
-  private:
-    Controller* value_;
-};
-
-long long milliseconds(double seconds) {
-    return static_cast<long long>(std::max(0.0, seconds) * 1000.0);
-}
 
 class CycleTracker {
   public:
@@ -85,6 +72,7 @@ bool RealSampler::sample_buffered(const Config::SamplingConfig& config, Result::
             result.totalSamplingBuffer.data() + config.sampling_length_per_sample * i);
         if (fail(code)) return false;
     }
+    controller.reset();
     dump_origin_data(config, result);
     return true;
 }
@@ -119,7 +107,7 @@ bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::S
     const auto finish = [&]() {
         const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - origin).count();
         result.instant_ai_actual_duration_seconds = elapsed;
-        result.progress.elapsed_milliseconds.store(milliseconds(elapsed));
+        result.progress.update_elapsed(elapsed);
     };
     for (double planned : schedule.planned_seconds) {
         const auto target = origin + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
@@ -128,19 +116,27 @@ bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::S
             if (result.progress.cancel_requested.load()) {
                 result.error_code = Error::USER_CANCELLED; result.cancelled = true; finish(); return false;
             }
-            const auto chunk = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
-            std::this_thread::sleep_until(std::min(target, chunk));
+            const auto chunk = std::chrono::steady_clock::now() + std::chrono::milliseconds(25);
+            result.progress.wait_until_or_cancel(std::min(target, chunk));
+            const double waited =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - origin).count();
+            result.progress.update_elapsed(waited);
         }
         if (result.progress.cancel_requested.load()) {
             result.error_code = Error::USER_CANCELLED; result.cancelled = true; finish(); return false;
         }
         const auto started = std::chrono::steady_clock::now();
-        const double actual = std::chrono::duration<double>(started - origin).count();
-        result.progress.elapsed_milliseconds.store(milliseconds(actual));
+        const double started_seconds = std::chrono::duration<double>(started - origin).count();
         double voltage = std::numeric_limits<double>::quiet_NaN();
+        // The vendor's synchronous ReadAny call has no cancellation API. Cancellation is observed immediately after it.
         code = controller->ReadAny(0, 1, nullptr, &voltage);
-        const double gap = planned - previous_planned;
-        if (actual - planned > std::max(0.020, gap * 0.5)) {
+        const auto completed = std::chrono::steady_clock::now();
+        const double completed_seconds = std::chrono::duration<double>(completed - origin).count();
+        const InstantAi::ReadTiming timing = InstantAi::evaluate_read_timing(
+            planned, started_seconds, completed_seconds, previous_planned, deadline);
+        const double actual = timing.actual_seconds;
+        result.progress.update_elapsed(actual);
+        if (timing.late) {
             result.progress.late_reads.fetch_add(1);
             result.instant_ai_late_reads++;
         }
@@ -156,7 +152,7 @@ bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::S
         result.instant_ai_readings.push_back({planned, actual, voltage, true, 0});
         result.progress.successful_reads.fetch_add(1);
         result.progress.completed_cycles.store(cycles.observe(voltage));
-        if (actual > deadline) {
+        if (timing.timed_out) {
             result.error_code = Error::INSTANT_AI_SCHEDULE_TIMEOUT; finish(); return false;
         }
     }

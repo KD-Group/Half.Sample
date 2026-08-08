@@ -74,7 +74,7 @@ void measure() {
     } while (false);
 
     Global::result.success = success;
-    Global::result.measuring = false;
+    Global::result.measuring.store(false, std::memory_order_release);
 }
 
 #ifdef _WIN32
@@ -101,12 +101,6 @@ void async_measure(const std::string& dump_file_path) {
         return;
     }
 
-    bool& measuring = Global::result.measuring;
-    if (measuring) {
-        Base::error(Error::NOW_IN_MEASURING);
-        return;
-    }
-
     Config::SamplingConfig requested_config = Global::config;
     requested_config.auto_mode = (mode == "True");
     requested_config.dump_file_path = dump_file_path;
@@ -115,28 +109,48 @@ void async_measure(const std::string& dump_file_path) {
         Base::error(Error::INVALID_INSTANT_AI_CONFIG);
         return;
     }
+    bool expected = false;
+    if (!Global::result.measuring.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+        Base::error(Error::NOW_IN_MEASURING);
+        return;
+    }
     Global::config = requested_config;
     clear_measure_data();
 
-    measuring = true;
+    bool measuring = true;
     Base::variable(measuring);
 
 #ifdef _WIN32
-    DWORD handle;
-    CreateThread(NULL, 0, measure, NULL, 0, &handle);
+    HANDLE thread = CreateThread(NULL, 0, measure, NULL, 0, NULL);
+    if (!thread) {
+        Global::result.error_code = Error::ErrorHandleNotValid;
+        Global::result.measuring.store(false, std::memory_order_release);
+        Base::error(Error::ErrorHandleNotValid);
+        return;
+    }
+    CloseHandle(thread);
 #else
     // start a thread to do measure
-    std::thread(measure).detach();
+    try {
+        std::thread(measure).detach();
+    } catch (...) {
+        Global::result.error_code = Error::ErrorHandleNotValid;
+        Global::result.measuring.store(false, std::memory_order_release);
+        Base::error(Error::ErrorHandleNotValid);
+    }
 #endif
 }
 
 void to_query() {
-    bool success = Global::result.success;
+    bool measuring = Global::result.measuring.load(std::memory_order_acquire);
+    bool success = measuring ? false : Global::result.success;
     Base::variable(success);
-    bool measuring = Global::result.measuring;
     Base::variable(measuring);
     std::string acquisition_mode = Global::config.is_instant() ? "instant_ai" : "buffered_ai";
     Base::variable(acquisition_mode);
+    if (measuring) {
+        return;
+    }
     std::string error_category = Error::category(Global::result.error_code);
     bool retryable = Error::retryable(Global::result.error_code);
     bool cancelled = Global::result.cancelled || Global::result.error_code == Error::USER_CANCELLED;
@@ -196,7 +210,7 @@ void to_measure() {
 }
 
 void is_measuring() {
-    bool& measuring = Global::result.measuring;
+    bool measuring = Global::result.measuring.load(std::memory_order_acquire);
     Base::variable(measuring);
 }
 
@@ -215,7 +229,7 @@ void to_config() {
         return;
     }
 
-    if (Global::result.measuring) {
+    if (Global::result.measuring.load(std::memory_order_acquire)) {
         Base::error(Error::NOW_IN_MEASURING);
         return;
     }
@@ -239,7 +253,7 @@ void to_sampling_progress() {
     int target_cycles = Global::result.progress.target_cycles.load();
     int successful_reads = Global::result.progress.successful_reads.load();
     int late_reads = Global::result.progress.late_reads.load();
-    bool measuring = Global::result.measuring;
+    bool measuring = Global::result.measuring.load(std::memory_order_acquire);
     Base::variable(planned_seconds);
     Base::variable(elapsed_seconds);
     Base::variable(completed_cycles);
@@ -250,7 +264,7 @@ void to_sampling_progress() {
 }
 
 void to_cancel_sampling() {
-    Global::result.progress.cancel_requested.store(true);
+    Global::result.progress.request_cancel();
 }
 
 void to_dump() {
@@ -262,7 +276,7 @@ void to_dump() {
 void to_process() {
     std::string dump_file_path;
     std::cin >> dump_file_path;
-    if (Global::result.measuring) {
+    if (Global::result.measuring.load(std::memory_order_acquire)) {
         Base::error(Error::NOW_IN_MEASURING);
         return;
     }
@@ -289,7 +303,7 @@ void to_process() {
             break;
     } while (false);
 
-    Global::result.measuring = false;
+    Global::result.measuring.store(false, std::memory_order_release);
 }
 
 void clear_measure_data() {

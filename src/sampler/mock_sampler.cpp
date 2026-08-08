@@ -24,6 +24,19 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
         volatile double work = 0.0;
         for (int i = 0; i < mock_work_iterations; ++i) {
             work += static_cast<double>(i & 1);
+            if ((i & 1023) == 0) {
+                if (result.progress.cancel_requested.load(std::memory_order_acquire)) {
+                    result.error_code = Error::USER_CANCELLED;
+                    result.cancelled = true;
+                    result.instant_ai_actual_duration_seconds =
+                        result.progress.elapsed_milliseconds.load() / 1000.0;
+                    return false;
+                }
+                const double fraction = mock_work_iterations > 0
+                                            ? static_cast<double>(i) / mock_work_iterations
+                                            : 0.0;
+                result.progress.update_elapsed(config.instant_ai_planned_duration_seconds * fraction);
+            }
         }
         (void)work;
         result.instant_ai_waveforms.clear();
@@ -34,6 +47,13 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
             config.emitting_frequency, config.number_of_waveforms, config.instant_ai_target_points_per_waveform,
             config.instant_ai_max_reliable_polling_hz);
         for (double planned : schedule.planned_seconds) {
+            if (result.progress.cancel_requested.load(std::memory_order_acquire)) {
+                result.error_code = Error::USER_CANCELLED;
+                result.cancelled = true;
+                result.instant_ai_actual_duration_seconds =
+                    result.progress.elapsed_milliseconds.load() / 1000.0;
+                return false;
+            }
             const double cycles = planned * config.emitting_frequency + mock_phase_offset;
             const double phase = cycles - std::floor(cycles);
             const int phase_bin = static_cast<int>(phase * config.instant_ai_target_points_per_waveform + 1e-7);
@@ -55,8 +75,13 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
                 }
             }
             result.instant_ai_readings.push_back({planned, planned, voltage});
+            result.progress.successful_reads.fetch_add(1);
+            result.progress.update_elapsed(planned);
+            result.progress.completed_cycles.store(std::min(
+                result.progress.target_cycles.load(), static_cast<int>(std::floor(planned * config.emitting_frequency))));
         }
         result.instant_ai_actual_duration_seconds = schedule.duration_seconds;
+        result.progress.update_elapsed(schedule.duration_seconds);
         dump_origin_data(config, result);
         return true;
     }

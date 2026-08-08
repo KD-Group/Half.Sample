@@ -37,6 +37,7 @@ sample_instant_ai_test_sources = [
     'tests/sample_instant_ai/test_reconstruction.cpp',
     'tests/sample_instant_ai/test_mock_sampler.cpp',
     'tests/sample_instant_ai/test_progress.cpp',
+    'tests/sample_instant_ai/test_controller_owner.cpp',
     'src/config/sampling_config.cpp',
     'src/commander/base.cpp',
     'src/error/error.cpp',

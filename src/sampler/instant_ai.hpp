@@ -33,6 +33,12 @@ struct ContinuousSchedule {
     double polling_frequency_hz = 0.0;
 };
 
+struct ReadTiming {
+    double actual_seconds = 0.0;
+    bool late = false;
+    bool timed_out = false;
+};
+
 enum class ReconstructionStatus {
     Success,
     AlignmentFailed,
@@ -53,6 +59,8 @@ int phase_bin(double seconds, double emitting_frequency, int target_points);
 Schedule build_schedule(double emitting_frequency, int target_points, double minimum_interval_seconds);
 ContinuousSchedule build_continuous_schedule(double emitting_frequency, int requested_waveforms, int target_points,
                                              double max_polling_frequency_hz);
+ReadTiming evaluate_read_timing(double planned_seconds, double started_seconds, double completed_seconds,
+                               double previous_planned_seconds, double deadline_seconds);
 ReconstructionResult reconstruct_continuous(const TimedReadings& readings, int requested_waveforms,
                                             double emitting_frequency, int target_points);
 ReconstructionResult reconstruct_legacy_waveforms(const std::vector<TimedWaveform>& waveforms,

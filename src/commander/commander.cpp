@@ -16,6 +16,10 @@ void simple_test() {
 void set_sampler() {
     std::string sampler_name;
     std::cin >> sampler_name;
+    if (Global::result.measuring.load(std::memory_order_acquire)) {
+        Base::error(Error::NOW_IN_MEASURING);
+        return;
+    }
 
     Global::sampler = Sampler::SamplerFactory::get(sampler_name);
     if (Global::sampler.get()) {
@@ -39,6 +43,10 @@ void set_sampler_value() {
     std::string key;
     double value;
     std::cin >> key >> value;
+    if (Global::result.measuring.load(std::memory_order_acquire)) {
+        Base::error(Error::NOW_IN_MEASURING);
+        return;
+    }
     Global::sampler->set_value(key, value);
     Base::line(key, Global::sampler->get_value(key));
 }

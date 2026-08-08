@@ -99,6 +99,24 @@ class MyTestCase(unittest.TestCase):
             time.sleep(0.01)
         self.assertTrue(sampler.query().success)
 
+    def test_raw_progress_and_cancel_stop_mock_without_sleep(self):
+        sampler.set_sampler_value("mock_work_iterations", 2000000000)
+        sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
+        progress = sampler.communicate("to_sampling_progress")
+        self.assertTrue(progress.measuring)
+        self.assertGreaterEqual(progress.elapsed_seconds, 0.0)
+        with self.assertRaisesRegex(Sampler.Error, "now_in_measuring"):
+            sampler.set_sampler("mock_sampler")
+        with self.assertRaisesRegex(Sampler.Error, "now_in_measuring"):
+            sampler.set_sampler_value("mock_tau", 100)
+        sampler.communicate("to_cancel_sampling")
+        while sampler.is_measuring:
+            pass
+        result = sampler.query()
+        self.assertFalse(result.success)
+        self.assertTrue(result.cancelled)
+        self.assertEqual(result.message, "user_cancelled")
+
     def test_mock_missing_bin_controls_reject_invalid_values(self):
         sampler.set_sampler_value("mock_missing_bin_start", 7)
         sampler.set_sampler_value("mock_missing_bin_count", 2)

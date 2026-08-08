@@ -72,6 +72,16 @@ ContinuousSchedule build_continuous_schedule(double emitting_frequency, int requ
     return result;
 }
 
+ReadTiming evaluate_read_timing(double planned_seconds, double started_seconds, double completed_seconds,
+                               double previous_planned_seconds, double deadline_seconds) {
+    ReadTiming result;
+    result.actual_seconds = completed_seconds;
+    const double gap = planned_seconds - previous_planned_seconds;
+    result.late = started_seconds - planned_seconds > std::max(0.020, gap * 0.5);
+    result.timed_out = completed_seconds > deadline_seconds;
+    return result;
+}
+
 namespace {
 bool fill_bins(const TimedWaveform& readings, double frequency, int target_points, std::vector<double>& bins,
                int& interpolated, int& late_reads) {

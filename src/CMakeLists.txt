@@ -27,6 +27,7 @@ add_executable(sample sample.cpp
         result/sampling_result.hpp
         daq_headers/legacy/bdaqctrl.h
         sampler/mock_sampler.hpp
+        sampler/controller_owner.hpp
         sampler/mock_sampler.cpp
         sampler/instant_ai.hpp
         sampler/instant_ai.cpp
@@ -49,10 +50,13 @@ add_executable(sample_instant_ai_unit_tests
         ../tests/sample_instant_ai/test_phase_schedule.cpp
         ../tests/sample_instant_ai/test_reconstruction.cpp
         ../tests/sample_instant_ai/test_progress.cpp
+        ../tests/sample_instant_ai/test_controller_owner.cpp
+        ../tests/sample_instant_ai/test_mock_sampler.cpp
         config/sampling_config.cpp
         commander/base.cpp
         error/error.cpp
         sampler/instant_ai.cpp
+        sampler/mock_sampler.cpp
 )
 target_link_libraries(sample_instant_ai_unit_tests Eigen3::Eigen)
 
