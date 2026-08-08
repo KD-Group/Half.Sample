@@ -85,7 +85,8 @@ bool RealSampler::sample_buffered(const Config::SamplingConfig& config, Result::
             result.totalSamplingBuffer.data() + config.sampling_length_per_sample * i);
         if (fail(code)) return false;
     }
-    return dump_origin_data(config, result);
+    dump_origin_data(config, result);
+    return true;
 }
 
 bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::SamplingResult& result) {
@@ -144,12 +145,13 @@ bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::S
             result.instant_ai_late_reads++;
         }
         previous_planned = planned;
+        if (BioFailed(code)) {
+            result.instant_ai_readings.push_back({planned, actual, std::numeric_limits<double>::quiet_NaN(), false,
+                                                  static_cast<int>(code)});
+            result.error_code = static_cast<Error::Code>(code); finish(); return false;
+        }
         if (result.progress.cancel_requested.load()) {
             result.error_code = Error::USER_CANCELLED; result.cancelled = true; finish(); return false;
-        }
-        if (BioFailed(code)) {
-            result.instant_ai_readings.push_back({planned, actual, voltage, false, static_cast<int>(code)});
-            result.error_code = static_cast<Error::Code>(code); finish(); return false;
         }
         result.instant_ai_readings.push_back({planned, actual, voltage, true, 0});
         result.progress.successful_reads.fetch_add(1);

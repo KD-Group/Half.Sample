@@ -244,6 +244,26 @@ class HeaderLayoutTest(unittest.TestCase):
         self.assertNotIn("single_ch0", smoke)
         self.assertNotIn("single_ch1", smoke)
 
+    def test_real_sampler_preserves_buffered_dump_return_semantics(self):
+        source = compact_cpp(
+            (REPO_ROOT / "src/sampler/real_sampler.cpp").read_text(encoding="utf-8")
+        )
+        buffered = source.split("boolRealSampler::sample_buffered", 1)[1].split(
+            "boolRealSampler::sample_instant", 1
+        )[0]
+        self.assertIn("dump_origin_data(config,result);returntrue;", buffered)
+
+    def test_real_sampler_preserves_failed_read_before_post_read_cancel(self):
+        source = compact_cpp(
+            (REPO_ROOT / "src/sampler/real_sampler.cpp").read_text(encoding="utf-8")
+        )
+        post_read = source.split("code=controller->ReadAny", 1)[1]
+        failed = post_read.index("if(BioFailed(code))")
+        cancelled = post_read.index("if(result.progress.cancel_requested.load())")
+        self.assertLess(failed, cancelled)
+        failure_path = post_read[failed:cancelled]
+        self.assertIn("std::numeric_limits<double>::quiet_NaN()", failure_path)
+
 
 if __name__ == "__main__":
     unittest.main()
