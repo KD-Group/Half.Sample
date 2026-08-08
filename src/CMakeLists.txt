@@ -36,6 +36,10 @@ add_executable(sample sample.cpp
         sampler/sampler_factory.cpp
 )
 
+if (WIN32)
+    target_sources(sample PRIVATE sampler/real_sampler.cpp)
+endif ()
+
 target_compile_options(sample PRIVATE -fpermissive)
 target_link_libraries(sample Eigen3::Eigen)
 
@@ -44,6 +48,7 @@ add_executable(sample_instant_ai_unit_tests
         ../tests/sample_instant_ai/test_sampling_config.cpp
         ../tests/sample_instant_ai/test_phase_schedule.cpp
         ../tests/sample_instant_ai/test_reconstruction.cpp
+        ../tests/sample_instant_ai/test_progress.cpp
         config/sampling_config.cpp
         commander/base.cpp
         error/error.cpp

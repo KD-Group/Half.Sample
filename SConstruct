@@ -19,6 +19,7 @@ sample_sources = [
 ]
 
 if sys.platform == 'win32':
+    sample_sources.append('cpp_build/sampler/real_sampler.cpp')
     env = Environment(CCFLAGS=['/MD', '/EHsc', '/std:c++17', '-O2'], CPPPATH=[eigen_path])
 elif sys.platform == 'darwin':
     env = Environment(CPPFLAGS=['-std=c++11', '-O2'], CPPPATH=[eigen_path])
@@ -35,6 +36,7 @@ sample_instant_ai_test_sources = [
     'tests/sample_instant_ai/test_phase_schedule.cpp',
     'tests/sample_instant_ai/test_reconstruction.cpp',
     'tests/sample_instant_ai/test_mock_sampler.cpp',
+    'tests/sample_instant_ai/test_progress.cpp',
     'src/config/sampling_config.cpp',
     'src/commander/base.cpp',
     'src/error/error.cpp',

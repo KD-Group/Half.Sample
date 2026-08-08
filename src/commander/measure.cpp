@@ -230,6 +230,29 @@ void to_config() {
     Global::config = requested_config;
 }
 
+void to_sampling_progress() {
+    const long long planned_ms = Global::result.progress.planned_milliseconds.load();
+    const long long elapsed_ms = Global::result.progress.elapsed_milliseconds.load();
+    double planned_seconds = planned_ms / 1000.0;
+    double elapsed_seconds = elapsed_ms / 1000.0;
+    int completed_cycles = Global::result.progress.completed_cycles.load();
+    int target_cycles = Global::result.progress.target_cycles.load();
+    int successful_reads = Global::result.progress.successful_reads.load();
+    int late_reads = Global::result.progress.late_reads.load();
+    bool measuring = Global::result.measuring;
+    Base::variable(planned_seconds);
+    Base::variable(elapsed_seconds);
+    Base::variable(completed_cycles);
+    Base::variable(target_cycles);
+    Base::variable(successful_reads);
+    Base::variable(late_reads);
+    Base::variable(measuring);
+}
+
+void to_cancel_sampling() {
+    Global::result.progress.cancel_requested.store(true);
+}
+
 void to_dump() {
     std::string dump_file_path;
     std::cin >> dump_file_path;
@@ -279,6 +302,10 @@ void clear_measure_data() {
     Global::result.instant_ai_late_reads = 0;
     Global::result.instant_ai_interpolated_bins = 0;
     Global::result.cancelled = false;
+    Global::result.progress.reset(Global::config.is_instant()
+                                      ? Global::config.instant_ai_planned_duration_seconds
+                                      : 0.0,
+                                  Global::config.is_instant() ? Global::config.number_of_waveforms + 1 : 0);
     Global::result.error_code = Error::SUCCESS;
     Global::result.maximum = 0.0;
     Global::result.minimum = 0.0;

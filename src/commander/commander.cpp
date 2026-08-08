@@ -66,6 +66,8 @@ void exec() {
     add_func_into_mapper(to_dump, mapper);
     add_func_into_mapper(to_process, mapper);
     add_func_into_mapper(to_config, mapper);
+    add_func_into_mapper(to_sampling_progress, mapper);
+    add_func_into_mapper(to_cancel_sampling, mapper);
 
     // Default sampler
     Global::sampler = Sampler::SamplerFactory::get("mock_sampler");

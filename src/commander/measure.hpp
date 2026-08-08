@@ -14,6 +14,10 @@ void to_dump();
 
 void to_process();
 
+void to_sampling_progress();
+
+void to_cancel_sampling();
+
 void clear_measure_data();
 } // namespace Commander
 
