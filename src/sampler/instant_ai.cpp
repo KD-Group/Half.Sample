@@ -377,14 +377,20 @@ ReconstructionResult reconstruct_legacy_waveforms(const std::vector<TimedWavefor
     ReconstructionResult result;
     if (requested_waveforms <= 0 || target_points < 20 ||
         waveforms.size() != static_cast<std::size_t>(requested_waveforms)) {
+        result.status = ReconstructionStatus::WaveformCountInsufficient;
         return result;
     }
     result.averaged_half_wave.assign(static_cast<std::size_t>(target_points / 2), 0.0);
     for (const auto& readings : waveforms) {
         std::vector<double> wave;
         if (!fill_bins(readings, emitting_frequency, target_points, wave, result.interpolated_bins,
-                       result.late_reads) ||
-            !align_wave(wave)) {
+                       result.late_reads)) {
+            result.status = ReconstructionStatus::CoverageInsufficient;
+            result.averaged_half_wave.clear();
+            return result;
+        }
+        if (!align_wave(wave)) {
+            result.status = ReconstructionStatus::AlignmentFailed;
             result.averaged_half_wave.clear();
             return result;
         }

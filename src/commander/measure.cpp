@@ -53,8 +53,7 @@ bool parse_instant_options(const std::string& line_tail, InstantOptions& instant
 
 namespace Commander {
 void measure() {
-    bool& success = Global::result.success;
-    success = true;
+    bool success = true;
 
     do {
         success = Global::sampler->sample(Global::config, Global::result);
@@ -74,6 +73,7 @@ void measure() {
             break;
     } while (false);
 
+    Global::result.success = success;
     Global::result.measuring = false;
 }
 
@@ -86,7 +86,7 @@ DWORD WINAPI measure(void*) {
 
 #endif
 
-void async_measure() {
+void async_measure(const std::string& dump_file_path) {
     int number_of_waveforms;
     double emitting_frequency;
     std::string mode;
@@ -101,19 +101,22 @@ void async_measure() {
         return;
     }
 
-    Global::config.auto_mode = (mode == "True");
-    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_options.threshold,
-                               instant_options.target_points, instant_options.max_reliable_polling_hz)) {
-        Base::error(Error::INVALID_INSTANT_AI_CONFIG);
-        return;
-    }
-    clear_measure_data();
-
     bool& measuring = Global::result.measuring;
     if (measuring) {
         Base::error(Error::NOW_IN_MEASURING);
         return;
     }
+
+    Config::SamplingConfig requested_config = Global::config;
+    requested_config.auto_mode = (mode == "True");
+    requested_config.dump_file_path = dump_file_path;
+    if (!requested_config.update(number_of_waveforms, emitting_frequency, instant_options.threshold,
+                                 instant_options.target_points, instant_options.max_reliable_polling_hz)) {
+        Base::error(Error::INVALID_INSTANT_AI_CONFIG);
+        return;
+    }
+    Global::config = requested_config;
+    clear_measure_data();
 
     measuring = true;
     Base::variable(measuring);
@@ -130,6 +133,8 @@ void async_measure() {
 void to_query() {
     bool success = Global::result.success;
     Base::variable(success);
+    bool measuring = Global::result.measuring;
+    Base::variable(measuring);
     std::string acquisition_mode = Global::config.is_instant() ? "instant_ai" : "buffered_ai";
     Base::variable(acquisition_mode);
     std::string error_category = Error::category(Global::result.error_code);
@@ -187,8 +192,7 @@ void to_query() {
 }
 
 void to_measure() {
-    Global::config.dump_file_path = "";
-    async_measure();
+    async_measure("");
 }
 
 void is_measuring() {
@@ -211,24 +215,39 @@ void to_config() {
         return;
     }
 
-    Global::config.auto_mode = (mode == "True");
-    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_options.threshold,
-                               instant_options.target_points, instant_options.max_reliable_polling_hz)) {
-        Base::error(Error::INVALID_INSTANT_AI_CONFIG);
+    if (Global::result.measuring) {
+        Base::error(Error::NOW_IN_MEASURING);
+        return;
     }
+
+    Config::SamplingConfig requested_config = Global::config;
+    requested_config.auto_mode = (mode == "True");
+    if (!requested_config.update(number_of_waveforms, emitting_frequency, instant_options.threshold,
+                                 instant_options.target_points, instant_options.max_reliable_polling_hz)) {
+        Base::error(Error::INVALID_INSTANT_AI_CONFIG);
+        return;
+    }
+    Global::config = requested_config;
 }
 
 void to_dump() {
-    std::cin >> Global::config.dump_file_path;
-    async_measure();
+    std::string dump_file_path;
+    std::cin >> dump_file_path;
+    async_measure(dump_file_path);
 }
 
 void to_process() {
+    std::string dump_file_path;
+    std::cin >> dump_file_path;
+    if (Global::result.measuring) {
+        Base::error(Error::NOW_IN_MEASURING);
+        return;
+    }
     clear_measure_data();
     bool& success = Global::result.success;
     success = true;
 
-    std::cin >> Global::config.dump_file_path;
+    Global::config.dump_file_path = dump_file_path;
     success = Sampler::Sampler::load_origin_data(Global::config, Global::result);
     do {
         if (!success)
@@ -251,6 +270,7 @@ void to_process() {
 }
 
 void clear_measure_data() {
+    Global::result.success = false;
     Global::result.instant_ai_waveforms.clear();
     Global::result.instant_ai_readings.clear();
     Global::result.instant_ai_format_version = 0;

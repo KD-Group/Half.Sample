@@ -26,6 +26,7 @@ class MockSampler : public Sampler {
     double mock_phase_offset;
     int mock_missing_bin_start;
     int mock_missing_bin_count;
+    int mock_work_iterations;
 };
 
 } // namespace Sampler

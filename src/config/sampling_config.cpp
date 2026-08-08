@@ -37,7 +37,8 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
         if (!std::isfinite(instant_polling_frequency) || instant_polling_frequency <= 0 ||
             !std::isfinite(instant_planned_duration_seconds) || instant_planned_duration_seconds <= 0 ||
             !std::isfinite(instant_sampling_interval) || instant_sampling_interval <= 0 ||
-            !std::isfinite(rounded_reading_count) || rounded_reading_count < 1 || rounded_reading_count > INT_MAX) {
+            !std::isfinite(rounded_reading_count) || rounded_reading_count < 1 ||
+            rounded_reading_count > Constant::MaxSamplingPoints) {
             return false;
         }
         instant_planned_readings = static_cast<std::size_t>(std::llround(unrounded_reading_count)) + 1;

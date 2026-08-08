@@ -29,6 +29,9 @@ bool align(const Config::SamplingConfig& config, Result::SamplingResult& result)
             result.error_code = Error::VOLTAGE_NOT_ENOUGH;
             return false;
         }
+    } else if (result.totalSamplingBuffer.empty()) {
+        result.error_code = config.is_instant() ? Error::INSTANT_AI_COVERAGE_INSUFFICIENT : Error::WAVE_NOT_FOUND;
+        return false;
     } else {
         result.maximum = *std::max_element(result.totalSamplingBuffer.begin(), result.totalSamplingBuffer.end());
         result.minimum = *std::min_element(result.totalSamplingBuffer.begin(), result.totalSamplingBuffer.end());

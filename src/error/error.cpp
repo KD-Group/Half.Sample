@@ -12,6 +12,8 @@ std::string to_string(Code error_code) {
         return "sampler_not_found";
     case NOW_IN_MEASURING:
         return "now_in_measuring";
+    case FILE_NOT_FOUND:
+        return "file_not_found";
     case VOLTAGE_NOT_ENOUGH:
         return "voltage_not_enough";
     case WAVE_NOT_FOUND:

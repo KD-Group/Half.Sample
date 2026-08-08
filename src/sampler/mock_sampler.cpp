@@ -1,6 +1,7 @@
 #include <cmath>
 #include <ctime>
 #include <iostream>
+#include <limits>
 #include "../constant.hpp"
 #include "mock_sampler.hpp"
 
@@ -15,13 +16,20 @@ MockSampler::MockSampler() {
     mock_phase_offset = 0.0;
     mock_missing_bin_start = 0;
     mock_missing_bin_count = 0;
+    mock_work_iterations = 0;
 }
 
 bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingResult& result) {
     if (config.is_instant()) {
+        volatile double work = 0.0;
+        for (int i = 0; i < mock_work_iterations; ++i) {
+            work += static_cast<double>(i & 1);
+        }
+        (void)work;
         result.instant_ai_waveforms.clear();
         result.instant_ai_readings.clear();
         result.instant_ai_format_version = 2;
+        std::vector<double>().swap(result.totalSamplingBuffer);
         const auto schedule = InstantAi::build_continuous_schedule(
             config.emitting_frequency, config.number_of_waveforms, config.instant_ai_target_points_per_waveform,
             config.instant_ai_max_reliable_polling_hz);
@@ -29,11 +37,12 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
             const double cycles = planned * config.emitting_frequency + mock_phase_offset;
             const double phase = cycles - std::floor(cycles);
             const int phase_bin = static_cast<int>(phase * config.instant_ai_target_points_per_waveform + 1e-7);
-            const int missing_offset =
-                (phase_bin - mock_missing_bin_start + config.instant_ai_target_points_per_waveform) %
-                config.instant_ai_target_points_per_waveform;
+            const int points = config.instant_ai_target_points_per_waveform;
+            const int normalized_missing_start = ((mock_missing_bin_start % points) + points) % points;
+            const int missing_count = std::min(mock_missing_bin_count, points);
+            const int missing_offset = ((phase_bin - normalized_missing_start) % points + points) % points;
             const bool terminal_read = planned == schedule.planned_seconds.back();
-            if (!terminal_read && mock_missing_bin_count > 0 && missing_offset < mock_missing_bin_count) {
+            if (!terminal_read && missing_count > 0 && missing_offset < missing_count) {
                 continue;
             }
             double voltage = 0.0;
@@ -48,11 +57,6 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
             result.instant_ai_readings.push_back({planned, planned, voltage});
         }
         result.instant_ai_actual_duration_seconds = schedule.duration_seconds;
-        result.totalSamplingBuffer.clear();
-        result.totalSamplingBuffer.reserve(result.instant_ai_readings.size());
-        for (const auto& reading : result.instant_ai_readings) {
-            result.totalSamplingBuffer.push_back(reading.voltage);
-        }
         dump_origin_data(config, result);
         return true;
     }
@@ -118,6 +122,8 @@ double MockSampler::get_value(const std::string& key) {
         value = mock_missing_bin_start;
     } else if (key == "mock_missing_bin_count") {
         value = mock_missing_bin_count;
+    } else if (key == "mock_work_iterations") {
+        value = mock_work_iterations;
     } else {
         return 0.0;
     }
@@ -139,9 +145,23 @@ bool MockSampler::set_value(const std::string& key, const double value) {
     } else if (key == "mock_phase_offset") {
         mock_phase_offset = value - std::floor(value);
     } else if (key == "mock_missing_bin_start") {
+        if (!std::isfinite(value) || std::floor(value) != value ||
+            value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max()) {
+            return false;
+        }
         mock_missing_bin_start = static_cast<int>(value);
     } else if (key == "mock_missing_bin_count") {
+        if (!std::isfinite(value) || std::floor(value) != value || value < 0 ||
+            value > std::numeric_limits<int>::max()) {
+            return false;
+        }
         mock_missing_bin_count = static_cast<int>(value);
+    } else if (key == "mock_work_iterations") {
+        if (!std::isfinite(value) || std::floor(value) != value || value < 0 ||
+            value > std::numeric_limits<int>::max()) {
+            return false;
+        }
+        mock_work_iterations = static_cast<int>(value);
     } else {
         return false;
     }

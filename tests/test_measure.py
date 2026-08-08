@@ -7,6 +7,21 @@ from sample import Sampler, sampler
 
 
 class MyTestCase(unittest.TestCase):
+    def setUp(self):
+        sampler.set_sampler(sampler_name="mock_sampler")
+        sampler.set_sampler_value("mock_phase_offset", 0)
+        sampler.set_sampler_value("mock_missing_bin_start", 0)
+        sampler.set_sampler_value("mock_missing_bin_count", 0)
+        sampler.set_sampler_value("mock_work_iterations", 0)
+
+    def tearDown(self):
+        while sampler.is_measuring:
+            time.sleep(0.01)
+        sampler.set_sampler_value("mock_phase_offset", 0)
+        sampler.set_sampler_value("mock_missing_bin_start", 0)
+        sampler.set_sampler_value("mock_missing_bin_count", 0)
+        sampler.set_sampler_value("mock_work_iterations", 0)
+
     def test_optional_instant_ai_arguments_are_backward_compatible(self):
         client = Sampler()
         client.communicate = lambda command, executor=None: command
@@ -58,6 +73,39 @@ class MyTestCase(unittest.TestCase):
             sampler.communicate("to_config 3 0.05 False 0.1 100 invalid")
         with self.assertRaisesRegex(Sampler.Error, "invalid_instant_ai_config"):
             sampler.communicate("to_config 3 0.05 False 0.1 100 10 extra")
+
+    def test_active_measurement_rejects_overlapping_request_without_mutating_config(self):
+        sampler.set_sampler_value("mock_work_iterations", 100000000)
+        sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
+        with self.assertRaisesRegex(Sampler.Error, "now_in_measuring"):
+            sampler.measure(1, 0.1, instant_ai_frequency_threshold=0.1)
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
+            with self.assertRaisesRegex(Sampler.Error, "now_in_measuring"):
+                sampler.dump(str(Path(directory) / "busy.csv"), 1, 0.1, instant_ai_frequency_threshold=0.1)
+        while sampler.is_measuring:
+            time.sleep(0.01)
+        result = sampler.query()
+        self.assertTrue(result.success, result.message)
+        self.assertEqual(result.instant_ai_complete_waveforms, 3)
+        self.assertAlmostEqual(result.instant_ai_planned_duration_seconds, 80.0)
+
+    def test_query_during_active_measurement_is_not_completed_success(self):
+        sampler.set_sampler_value("mock_work_iterations", 100000000)
+        sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
+        active = sampler.query()
+        self.assertTrue(active.measuring)
+        self.assertFalse(active.success)
+        while sampler.is_measuring:
+            time.sleep(0.01)
+        self.assertTrue(sampler.query().success)
+
+    def test_mock_missing_bin_controls_reject_invalid_values(self):
+        sampler.set_sampler_value("mock_missing_bin_start", 7)
+        sampler.set_sampler_value("mock_missing_bin_count", 2)
+        sampler.set_sampler_value("mock_missing_bin_start", 1.5)
+        sampler.set_sampler_value("mock_missing_bin_count", -1)
+        self.assertEqual(sampler.get_sampler_value("mock_missing_bin_start").mock_missing_bin_start, 7)
+        self.assertEqual(sampler.get_sampler_value("mock_missing_bin_count").mock_missing_bin_count, 2)
 
     def test_legacy_two_option_measure_protocol_defaults_max_polling(self):
         sampler.set_sampler(sampler_name="mock_sampler")
@@ -185,7 +233,7 @@ class MyTestCase(unittest.TestCase):
         sampler.set_sampler(sampler_name="mock_sampler")
         sampler.set_sampler_value("mock_noise", 0)
         sampler.set_sampler_value("mock_phase_offset", 0)
-        sampler.set_sampler_value("mock_missing_bin_start", 98)
+        sampler.set_sampler_value("mock_missing_bin_start", -2)
         sampler.set_sampler_value("mock_missing_bin_count", 3)
         try:
             sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
@@ -219,6 +267,32 @@ class MyTestCase(unittest.TestCase):
             sampler.process(str(dump_path))
             replay = sampler.query()
             self.assertTrue(replay.success)
+
+    def test_empty_legacy_instant_ai_v1_returns_stable_failure(self):
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
+            dump_path = Path(directory) / "empty-instant.csv"
+            dump_path.write_text(
+                "#HALF_SAMPLE_INSTANT_AI_V1\n"
+                "emitting_frequency=0.1\n"
+                "target_points=100\n"
+                "number_of_waveforms=3\n"
+                "waveform_index,planned_seconds,actual_seconds,voltage\n",
+                encoding="utf-8",
+            )
+            sampler.process(str(dump_path))
+            result = sampler.query()
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_category, "coverage")
+            self.assertFalse(result.retryable)
+
+    def test_missing_process_file_has_stable_contract(self):
+        missing = Path(__file__).resolve().parents[1] / "cpp_build" / "does-not-exist.csv"
+        sampler.process(str(missing))
+        result = sampler.query()
+        self.assertFalse(result.success)
+        self.assertEqual(result.message, "file_not_found")
+        self.assertEqual(result.error_category, "file")
+        self.assertFalse(result.retryable)
 
 
 if __name__ == '__main__':

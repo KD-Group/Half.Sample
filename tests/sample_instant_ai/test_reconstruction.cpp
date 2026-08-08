@@ -83,9 +83,17 @@ void test_reconstruction() {
     waves[0] = make_wave(-1.0, 0, 2);
     assert(Sampler::InstantAi::reconstruct_legacy_waveforms(waves, 3, 0.1, 100).success);
     waves[0] = make_wave(-1.0, 20, 3);
-    assert(!Sampler::InstantAi::reconstruct_legacy_waveforms(waves, 3, 0.1, 100).success);
+    assert(Sampler::InstantAi::reconstruct_legacy_waveforms(waves, 3, 0.1, 100).status ==
+           Sampler::InstantAi::ReconstructionStatus::CoverageInsufficient);
+    waves[0] = make_wave(0.0);
+    for (auto& reading : waves[0]) {
+        reading.voltage = 1.0;
+    }
+    assert(Sampler::InstantAi::reconstruct_legacy_waveforms(waves, 3, 0.1, 100).status ==
+           Sampler::InstantAi::ReconstructionStatus::AlignmentFailed);
     waves.resize(2);
-    assert(!Sampler::InstantAi::reconstruct_legacy_waveforms(waves, 3, 0.1, 100).success);
+    assert(Sampler::InstantAi::reconstruct_legacy_waveforms(waves, 3, 0.1, 100).status ==
+           Sampler::InstantAi::ReconstructionStatus::WaveformCountInsufficient);
 
     const double start_phases[] = {0.0, 0.13, 0.49, 0.91};
     const int waveform_counts[] = {1, 3};

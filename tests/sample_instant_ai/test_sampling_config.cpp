@@ -69,4 +69,6 @@ void test_sampling_config() {
     assert_previous_config_preserved();
     assert(!config.update(INT_MAX, 0.05, 0.1, 100, 10.0));
     assert_previous_config_preserved();
+    assert(!config.update(160000, 0.1, 0.1, 100, 10.0));
+    assert_previous_config_preserved();
 }
