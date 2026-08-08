@@ -1,5 +1,6 @@
 import unittest
 import ast
+import re
 from pathlib import Path
 
 
@@ -39,6 +40,19 @@ def compact_cpp(source):
 
 
 class HeaderLayoutTest(unittest.TestCase):
+    def test_std_algorithm_users_declare_dependency(self):
+        algorithm_use = re.compile(r"std::(?:min|max|sort|max_element|min_element|fill|find|reverse|swap)\s*\(")
+        missing = []
+        for tree in (REPO_ROOT / "src", REPO_ROOT / "tests"):
+            for path in tree.rglob("*"):
+                if path.suffix not in (".cpp", ".hpp") or "3rdparty" in path.parts:
+                    continue
+                source = path.read_text(encoding="utf-8")
+                if algorithm_use.search(source) and "#include <algorithm>" not in source:
+                    missing.append(str(path.relative_to(REPO_ROOT)))
+
+        self.assertEqual([], missing)
+
     def test_mock_sampler_declares_algorithm_dependency(self):
         source = (REPO_ROOT / "src/sampler/mock_sampler.cpp").read_text(encoding="utf-8")
 

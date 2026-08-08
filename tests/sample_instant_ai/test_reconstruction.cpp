@@ -1,5 +1,6 @@
 #include "../../src/sampler/instant_ai.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <limits>
