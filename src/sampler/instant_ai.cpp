@@ -287,20 +287,39 @@ ReconstructionResult reconstruct_continuous(const TimedReadings& input, int requ
     }
 
     const double theoretical_period = 1.0 / emitting_frequency;
-    int chain_start = -1;
-    for (int start = 0; start + requested_waveforms < static_cast<int>(edges.size()); ++start) {
-        bool compatible = true;
-        for (int cycle = 0; cycle < requested_waveforms; ++cycle) {
-            const double period = edges[static_cast<std::size_t>(start + cycle + 1)] -
-                                  edges[static_cast<std::size_t>(start + cycle)];
-            if (period < theoretical_period * 0.8 || period > theoretical_period * 1.2) {
-                compatible = false;
-                break;
+    const std::size_t edge_count = edges.size();
+    const double infinity = std::numeric_limits<double>::infinity();
+    std::vector<std::vector<double>> chain_cost(
+        static_cast<std::size_t>(requested_waveforms + 1), std::vector<double>(edge_count, infinity));
+    std::vector<std::vector<int>> successor(
+        static_cast<std::size_t>(requested_waveforms + 1), std::vector<int>(edge_count, -1));
+    for (std::size_t edge = 0; edge < edge_count; ++edge) {
+        chain_cost[0][edge] = 0.0;
+    }
+    for (int remaining = 1; remaining <= requested_waveforms; ++remaining) {
+        for (std::size_t edge = 0; edge < edge_count; ++edge) {
+            for (std::size_t next = edge + 1; next < edge_count; ++next) {
+                const double period = edges[next] - edges[edge];
+                if (period < theoretical_period * 0.8 || period > theoretical_period * 1.2 ||
+                    !std::isfinite(chain_cost[static_cast<std::size_t>(remaining - 1)][next])) {
+                    continue;
+                }
+                const double cost = std::fabs(period - theoretical_period) +
+                                    chain_cost[static_cast<std::size_t>(remaining - 1)][next];
+                if (cost < chain_cost[static_cast<std::size_t>(remaining)][edge]) {
+                    chain_cost[static_cast<std::size_t>(remaining)][edge] = cost;
+                    successor[static_cast<std::size_t>(remaining)][edge] = static_cast<int>(next);
+                }
             }
         }
-        if (compatible) {
-            chain_start = start;
-            break;
+    }
+    int chain_start = -1;
+    double best_cost = infinity;
+    for (std::size_t edge = 0; edge < edge_count; ++edge) {
+        const double cost = chain_cost[static_cast<std::size_t>(requested_waveforms)][edge];
+        if (cost < best_cost) {
+            best_cost = cost;
+            chain_start = static_cast<int>(edge);
         }
     }
     if (chain_start < 0) {
@@ -308,11 +327,18 @@ ReconstructionResult reconstruct_continuous(const TimedReadings& input, int requ
         return result;
     }
 
+    std::vector<int> selected_edges;
+    selected_edges.push_back(chain_start);
+    for (int remaining = requested_waveforms; remaining > 0; --remaining) {
+        const int next = successor[static_cast<std::size_t>(remaining)]
+                                  [static_cast<std::size_t>(selected_edges.back())];
+        selected_edges.push_back(next);
+    }
     result.averaged_half_wave.assign(static_cast<std::size_t>(target_points / 2), 0.0);
     for (int cycle = 0; cycle < requested_waveforms; ++cycle) {
         std::vector<double> bins;
-        if (!fill_continuous_cycle(readings, edges[static_cast<std::size_t>(chain_start + cycle)],
-                                   edges[static_cast<std::size_t>(chain_start + cycle + 1)], target_points, bins,
+        if (!fill_continuous_cycle(readings, edges[static_cast<std::size_t>(selected_edges[cycle])],
+                                   edges[static_cast<std::size_t>(selected_edges[cycle + 1])], target_points, bins,
                                    result.interpolated_bins)) {
             result.status = ReconstructionStatus::CoverageInsufficient;
             result.averaged_half_wave.clear();

@@ -145,6 +145,24 @@ void test_reconstruction() {
     assert(Sampler::InstantAi::reconstruct_continuous(make_edges(incompatible_edges, 4), 2, 1.0, kPoints).status ==
            Sampler::InstantAi::ReconstructionStatus::WaveformCountInsufficient);
 
+    const auto clean_two_cycles = make_continuous(0.0, 2);
+    const auto clean_two_cycle_result =
+        Sampler::InstantAi::reconstruct_continuous(clean_two_cycles, 2, 1.0, kPoints);
+    assert(clean_two_cycle_result.status == Sampler::InstantAi::ReconstructionStatus::Success);
+    assert(clean_two_cycle_result.complete_waveforms == 2);
+    auto noisy_two_cycles = clean_two_cycles;
+    for (auto& reading : noisy_two_cycles) {
+        if (std::fabs(reading.actual_seconds - 0.59) < 1e-10) {
+            reading.voltage = 0.0; // Explicit low part of a qualifying noise pulse.
+        } else if (std::fabs(reading.actual_seconds - 0.60) < 1e-10) {
+            reading.voltage = 3.0; // Explicit high part adds a spurious rising edge.
+        }
+    }
+    const auto noisy_two_cycle_result =
+        Sampler::InstantAi::reconstruct_continuous(noisy_two_cycles, 2, 1.0, kPoints);
+    assert(noisy_two_cycle_result.status == Sampler::InstantAi::ReconstructionStatus::Success);
+    assert(noisy_two_cycle_result.complete_waveforms == 2);
+
     auto failed_rows = make_continuous(0.0, 1);
     failed_rows.push_back(Sampler::InstantAi::TimedReading(1.31, 1.50, 1000.0, false, 5));
     failed_rows.push_back(Sampler::InstantAi::TimedReading(
