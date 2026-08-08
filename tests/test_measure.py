@@ -308,6 +308,7 @@ class MyTestCase(unittest.TestCase):
                 "planned_seconds,actual_seconds,voltage,read_success,read_error_code",
             ])
             self.assertEqual(len(lines), 8 + 401)
+            self.assertEqual(list(dump_path.parent.glob(dump_path.name + ".half-sample-tmp.*")), [])
 
             sampler.communicate("to_config 1 20 False")
             sampler.process(str(dump_path))

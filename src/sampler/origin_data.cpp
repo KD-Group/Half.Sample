@@ -2,19 +2,34 @@
 
 #include "../constant.hpp"
 #include <algorithm>
+#include <atomic>
+#include <cstdio>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <locale>
 #include <sstream>
-#include <stdexcept>
 #include <vector>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <Windows.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace {
 const char* const instant_v2_marker = "#HALF_SAMPLE_INSTANT_AI_V2";
 const char* const instant_v1_marker = "#HALF_SAMPLE_INSTANT_AI_V1";
 const char* const v2_columns = "planned_seconds,actual_seconds,voltage,read_success,read_error_code";
 const char* const v1_columns = "waveform_index,planned_seconds,actual_seconds,voltage";
+const std::size_t max_marker_length = 64u;
+const std::size_t max_metadata_length = 256u;
+const std::size_t max_row_length = 512u;
+const std::size_t max_buffered_token_length = 128u;
+
+enum class ReadStatus { Record, End, TooLong, IoError };
 
 std::string trim_cr(std::string value) {
     if (!value.empty() && value[value.size() - 1] == '\r') value.resize(value.size() - 1);
@@ -42,27 +57,25 @@ bool split_exact(const std::string& row, std::size_t count, std::vector<std::str
 }
 
 bool parse_double(const std::string& text, double& value, bool allow_nan = false) {
-    try {
-        std::size_t consumed = 0;
-        value = std::stod(text, &consumed);
-        if (consumed != text.size() || std::isinf(value)) return false;
-        return allow_nan || std::isfinite(value);
-    } catch (const std::exception&) {
-        return false;
+    if (allow_nan && text == "nan") {
+        value = std::numeric_limits<double>::quiet_NaN();
+        return true;
     }
+    std::istringstream parser(text);
+    parser.imbue(std::locale::classic());
+    parser >> std::noskipws >> value;
+    return parser && parser.eof() && std::isfinite(value);
 }
 
 bool parse_int(const std::string& text, int& value) {
-    try {
-        std::size_t consumed = 0;
-        const long long parsed = std::stoll(text, &consumed);
-        if (consumed != text.size() || parsed < std::numeric_limits<int>::min() ||
-            parsed > std::numeric_limits<int>::max()) return false;
-        value = static_cast<int>(parsed);
-        return true;
-    } catch (const std::exception&) {
-        return false;
-    }
+    long long parsed = 0;
+    std::istringstream parser(text);
+    parser.imbue(std::locale::classic());
+    parser >> std::noskipws >> parsed;
+    if (!parser || !parser.eof() || parsed < std::numeric_limits<int>::min() ||
+        parsed > std::numeric_limits<int>::max()) return false;
+    value = static_cast<int>(parsed);
+    return true;
 }
 
 bool parse_key_double(const std::string& line, const char* key, double& value) {
@@ -75,10 +88,42 @@ bool parse_key_int(const std::string& line, const char* key, int& value) {
     return line.compare(0, prefix.size(), prefix) == 0 && parse_int(line.substr(prefix.size()), value);
 }
 
-bool read_line(std::istream& input, std::string& line) {
-    if (!std::getline(input, line)) return false;
+ReadStatus read_bounded_line(std::istream& input, std::string& line, std::size_t maximum) {
+    line.clear();
+    char value = 0;
+    while (input.get(value)) {
+        if (value == '\n') {
+            line = trim_cr(line);
+            return ReadStatus::Record;
+        }
+        if (line.size() >= maximum) return ReadStatus::TooLong;
+        line.push_back(value);
+    }
+    if (input.bad()) return ReadStatus::IoError;
+    if (line.empty()) return ReadStatus::End;
     line = trim_cr(line);
-    return true;
+    return ReadStatus::Record;
+}
+
+ReadStatus read_bounded_field(std::istream& input, std::string& field, char delimiter,
+                              std::size_t maximum, bool& ended_by_delimiter) {
+    field.clear();
+    ended_by_delimiter = false;
+    char value = 0;
+    while (input.get(value)) {
+        if (value == delimiter) {
+            ended_by_delimiter = true;
+            return ReadStatus::Record;
+        }
+        if (field.size() >= maximum) return ReadStatus::TooLong;
+        field.push_back(value);
+    }
+    if (input.bad()) return ReadStatus::IoError;
+    return field.empty() ? ReadStatus::End : ReadStatus::Record;
+}
+
+bool read_required_line(std::istream& input, std::string& line, std::size_t maximum = max_metadata_length) {
+    return read_bounded_line(input, line, maximum) == ReadStatus::Record;
 }
 
 bool close_enough(double left, double right) {
@@ -109,7 +154,7 @@ void reset_loaded_result(Result::SamplingResult& result, const Config::SamplingC
 
 void write_number(std::ostream& output, double value) {
     if (std::isnan(value)) output << "nan";
-    else output << std::setprecision(15) << value;
+    else output << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
 }
 
 void write_metadata_number(std::ostream& output, double value) {
@@ -120,6 +165,7 @@ void write_metadata_number(std::ostream& output, double value) {
     std::string best;
     for (int precision = 1; precision <= std::numeric_limits<double>::max_digits10; ++precision) {
         std::ostringstream candidate;
+        candidate.imbue(std::locale::classic());
         candidate << std::setprecision(precision) << value;
         double reparsed = 0.0;
         const std::string text = candidate.str();
@@ -135,16 +181,93 @@ void write_reading_number(std::ostream& output, double value) {
     else output << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
 }
 
-bool fail_dump(Result::SamplingResult& result) {
-    if (result.error_code == Error::SUCCESS) result.error_code = Error::FILE_NOT_FOUND;
+bool fail_dump(Result::SamplingResult& result, Error::Code code = Error::FILE_NOT_FOUND) {
+    if (result.error_code == Error::SUCCESS) result.error_code = code;
     return false;
+}
+
+bool valid_dump_source(const Config::SamplingConfig& config, const Result::SamplingResult& result) {
+    if (!config.is_instant()) {
+        if (config.sampling_length_per_sample <= 0 ||
+            result.totalSamplingBuffer.size() < static_cast<std::size_t>(config.sampling_length_per_sample))
+            return false;
+        for (int i = 0; i < config.sampling_length_per_sample; ++i) {
+            if (!std::isfinite(result.totalSamplingBuffer[static_cast<std::size_t>(i)])) return false;
+        }
+        return true;
+    }
+    if (!std::isfinite(config.emitting_frequency) || config.emitting_frequency <= 0.0 ||
+        config.instant_ai_target_points_per_waveform < 20 || config.number_of_waveforms <= 0 ||
+        !std::isfinite(config.instant_ai_max_reliable_polling_hz) ||
+        config.instant_ai_max_reliable_polling_hz <= 0.0 ||
+        !std::isfinite(config.instant_ai_planned_duration_seconds) ||
+        config.instant_ai_planned_duration_seconds <= 0.0 ||
+        !std::isfinite(result.instant_ai_actual_duration_seconds) ||
+        result.instant_ai_actual_duration_seconds < 0.0) return false;
+    for (const auto& reading : result.instant_ai_readings) {
+        if (!std::isfinite(reading.planned_seconds) || reading.planned_seconds < 0.0 ||
+            !std::isfinite(reading.actual_seconds) || reading.actual_seconds < 0.0 ||
+            !std::isfinite(reading.completed_seconds) || reading.completed_seconds < reading.actual_seconds ||
+            reading.planned_seconds > config.instant_ai_planned_duration_seconds ||
+            reading.completed_seconds > result.instant_ai_actual_duration_seconds) return false;
+        if (reading.read_success) {
+            if (!std::isfinite(reading.voltage) || reading.read_error_code != 0) return false;
+        } else if (!std::isnan(reading.voltage) || reading.read_error_code == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+unsigned long process_id() {
+#ifdef _WIN32
+    return static_cast<unsigned long>(GetCurrentProcessId());
+#else
+    return static_cast<unsigned long>(getpid());
+#endif
+}
+
+std::string unique_temporary_path(const std::string& destination) {
+    static std::atomic<unsigned long long> sequence{0};
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        std::ostringstream name;
+        name.imbue(std::locale::classic());
+        name << destination << ".half-sample-tmp." << process_id() << '.' << sequence.fetch_add(1);
+        std::ifstream existing(name.str(), std::ios::binary);
+        existing.imbue(std::locale::classic());
+        if (!existing.is_open()) return name.str();
+    }
+    return std::string();
+}
+
+#ifdef _WIN32
+bool widen_path(const std::string& path, std::wstring& wide) {
+    const int length = MultiByteToWideChar(CP_ACP, 0, path.c_str(), -1, nullptr, 0);
+    if (length <= 0) return false;
+    wide.assign(static_cast<std::size_t>(length), L'\0');
+    if (MultiByteToWideChar(CP_ACP, 0, path.c_str(), -1, &wide[0], length) <= 0) return false;
+    wide.resize(static_cast<std::size_t>(length - 1));
+    return true;
+}
+#endif
+
+bool replace_atomically(const std::string& temporary, const std::string& destination) {
+#ifdef _WIN32
+    std::wstring temporary_wide, destination_wide;
+    return widen_path(temporary, temporary_wide) && widen_path(destination, destination_wide) &&
+           MoveFileExW(temporary_wide.c_str(), destination_wide.c_str(),
+                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+    return std::rename(temporary.c_str(), destination.c_str()) == 0;
+#endif
 }
 
 bool load_v2(std::istream& input, Config::SamplingConfig& config, Result::SamplingResult& result) {
     std::string frequency_line, points_line, waveforms_line, polling_line, planned_line, actual_line, header;
-    if (!read_line(input, frequency_line) || !read_line(input, points_line) || !read_line(input, waveforms_line) ||
-        !read_line(input, polling_line) || !read_line(input, planned_line) || !read_line(input, actual_line) ||
-        !read_line(input, header)) return false;
+    if (!read_required_line(input, frequency_line) || !read_required_line(input, points_line) ||
+        !read_required_line(input, waveforms_line) || !read_required_line(input, polling_line) ||
+        !read_required_line(input, planned_line) || !read_required_line(input, actual_line) ||
+        !read_required_line(input, header)) return false;
 
     double frequency = 0.0, max_polling = 0.0, planned_duration = 0.0, actual_duration = 0.0;
     int points = 0, waveforms = 0;
@@ -164,7 +287,10 @@ bool load_v2(std::istream& input, Config::SamplingConfig& config, Result::Sampli
     std::string row;
     std::vector<std::string> fields;
     const std::size_t reconstruction_rows = static_cast<std::size_t>(waveforms) + 1u;
-    while (read_line(input, row)) {
+    while (true) {
+        const ReadStatus row_status = read_bounded_line(input, row, max_row_length);
+        if (row_status == ReadStatus::End) break;
+        if (row_status != ReadStatus::Record) return false;
         if (row.empty()) continue;
         if (readings.size() >= static_cast<std::size_t>(Constant::MaxSamplingPoints)) return false;
         const std::size_t new_size = readings.size() + 1u;
@@ -174,11 +300,12 @@ bool load_v2(std::istream& input, Config::SamplingConfig& config, Result::Sampli
         if (!split_exact(row, 5, fields) || !parse_double(fields[0], planned) ||
             !parse_double(fields[1], actual) || !parse_double(fields[2], voltage, true) ||
             !parse_int(fields[3], succeeded) || (succeeded != 0 && succeeded != 1) ||
-            !parse_int(fields[4], error_code) || (succeeded && !std::isfinite(voltage))) return false;
+            !parse_int(fields[4], error_code) || planned < 0.0 || actual < 0.0 ||
+            planned > loaded_config.instant_ai_planned_duration_seconds || actual > actual_duration ||
+            (succeeded && (!std::isfinite(voltage) || error_code != 0)) ||
+            (!succeeded && (!std::isnan(voltage) || error_code == 0))) return false;
         readings.push_back({planned, actual, voltage, succeeded != 0, error_code});
     }
-    if (input.bad()) return false;
-
     config = loaded_config;
     reset_loaded_result(result, config);
     result.instant_ai_format_version = 2;
@@ -191,8 +318,8 @@ bool load_v2(std::istream& input, Config::SamplingConfig& config, Result::Sampli
 
 bool load_v1(std::istream& input, Config::SamplingConfig& config, Result::SamplingResult& result) {
     std::string frequency_line, points_line, waveforms_line, header;
-    if (!read_line(input, frequency_line) || !read_line(input, points_line) || !read_line(input, waveforms_line) ||
-        !read_line(input, header)) return false;
+    if (!read_required_line(input, frequency_line) || !read_required_line(input, points_line) ||
+        !read_required_line(input, waveforms_line) || !read_required_line(input, header)) return false;
     double frequency = 0.0;
     int points = 0, waveforms = 0;
     if (!parse_key_double(frequency_line, "emitting_frequency", frequency) ||
@@ -205,19 +332,20 @@ bool load_v1(std::istream& input, Config::SamplingConfig& config, Result::Sampli
     std::vector<double> voltages;
     std::string row;
     std::vector<std::string> fields;
-    while (read_line(input, row)) {
+    while (true) {
+        const ReadStatus row_status = read_bounded_line(input, row, max_row_length);
+        if (row_status == ReadStatus::End) break;
+        if (row_status != ReadStatus::Record) return false;
         if (row.empty()) continue;
         if (voltages.size() >= static_cast<std::size_t>(Constant::MaxSamplingPoints)) return false;
         int waveform = 0;
         double planned = 0.0, actual = 0.0, voltage = 0.0;
         if (!split_exact(row, 4, fields) || !parse_int(fields[0], waveform) || waveform < 0 ||
-            waveform >= waveforms || !parse_double(fields[1], planned) || !parse_double(fields[2], actual) ||
-            !parse_double(fields[3], voltage)) return false;
+            waveform >= waveforms || !parse_double(fields[1], planned) || planned < 0.0 ||
+            !parse_double(fields[2], actual) || actual < 0.0 || !parse_double(fields[3], voltage)) return false;
         loaded_waveforms[static_cast<std::size_t>(waveform)].push_back({planned, actual, voltage});
         voltages.push_back(voltage);
     }
-    if (input.bad()) return false;
-
     config = loaded_config;
     reset_loaded_result(result, config);
     result.instant_ai_format_version = 1;
@@ -231,21 +359,26 @@ bool load_buffered(std::istream& input, Config::SamplingConfig& config, Result::
     if (config.sampling_length_per_sample <= 0 || config.sampling_time <= 0) return false;
     const std::size_t per_sample = static_cast<std::size_t>(config.sampling_length_per_sample);
     const std::size_t times = static_cast<std::size_t>(config.sampling_time);
-    if (times > static_cast<std::size_t>(Constant::MaxSamplingPoints) / per_sample) return false;
-    const std::size_t capacity = per_sample * times;
+    if (per_sample > static_cast<std::size_t>(Constant::MaxSamplingPoints)) return false;
+    const std::size_t legacy_limit = static_cast<std::size_t>(Constant::MaxBufferSize);
+    const std::size_t capacity = times <= legacy_limit / per_sample ? per_sample * times : legacy_limit;
     std::vector<double> values;
     values.reserve(std::min(capacity, static_cast<std::size_t>(4096)));
     std::string token;
-    while (std::getline(input, token, ',')) {
-        if (values.size() >= capacity || values.size() >= static_cast<std::size_t>(Constant::MaxSamplingPoints))
-            return false;
+    bool ended_by_delimiter = false;
+    while (true) {
+        const ReadStatus token_status = read_bounded_field(
+            input, token, ',', max_buffered_token_length, ended_by_delimiter);
+        if (token_status == ReadStatus::End) return false;
+        if (token_status != ReadStatus::Record || values.size() >= per_sample) return false;
         double value = 0.0;
         if (!parse_double(trim_space(token), value)) return false;
         values.push_back(value);
+        if (!ended_by_delimiter) break;
     }
     // The historical Buffered writer stores exactly one configured acquisition block,
     // even when the in-memory buffer has room for several RunOnce calls.
-    if (input.bad() || values.size() != per_sample) return false;
+    if (values.size() != per_sample) return false;
     values.resize(capacity, 0.0);
 
     config.acquisition_mode = Config::AcquisitionMode::Buffered;
@@ -259,7 +392,11 @@ bool load_buffered(std::istream& input, Config::SamplingConfig& config, Result::
 namespace Sampler {
 bool Sampler::dump_origin_data(const Config::SamplingConfig& config, Result::SamplingResult& result) {
     if (config.dump_file_path.empty()) return true;
-    std::ofstream output(config.dump_file_path, std::ios::binary | std::ios::trunc);
+    if (!valid_dump_source(config, result)) return fail_dump(result, Error::INVALID_INSTANT_AI_CONFIG);
+    const std::string temporary_path = unique_temporary_path(config.dump_file_path);
+    if (temporary_path.empty()) return fail_dump(result);
+    std::ofstream output(temporary_path, std::ios::binary | std::ios::trunc);
+    output.imbue(std::locale::classic());
     if (!output.is_open()) return fail_dump(result);
     if (config.is_instant()) {
         output << instant_v2_marker << '\n' << "emitting_frequency=";
@@ -282,16 +419,23 @@ bool Sampler::dump_origin_data(const Config::SamplingConfig& config, Result::Sam
             output << ',' << (reading.read_success ? 1 : 0) << ',' << reading.read_error_code << '\n';
         }
     } else {
-        if (config.sampling_length_per_sample < 0 ||
-            result.totalSamplingBuffer.size() < static_cast<std::size_t>(config.sampling_length_per_sample))
-            return fail_dump(result);
         for (int i = 0; i < config.sampling_length_per_sample; ++i) {
             write_number(output, result.totalSamplingBuffer[static_cast<std::size_t>(i)]);
             if (i + 1 < config.sampling_length_per_sample) output << ',';
         }
     }
+    output.flush();
+    const bool write_succeeded = output.good();
     output.close();
-    return output.good() ? true : fail_dump(result);
+    if (!write_succeeded || !output.good()) {
+        std::remove(temporary_path.c_str());
+        return fail_dump(result);
+    }
+    if (!replace_atomically(temporary_path, config.dump_file_path)) {
+        std::remove(temporary_path.c_str());
+        return fail_dump(result);
+    }
+    return true;
 }
 
 bool Sampler::load_origin_data(Config::SamplingConfig& config, Result::SamplingResult& result) {
@@ -300,21 +444,21 @@ bool Sampler::load_origin_data(Config::SamplingConfig& config, Result::SamplingR
         return false;
     }
     std::ifstream input(config.dump_file_path, std::ios::binary);
+    input.imbue(std::locale::classic());
     if (!input.is_open()) {
         set_load_error(result, Error::FILE_NOT_FOUND);
         return false;
     }
-    std::string first_line;
-    if (!read_line(input, first_line)) {
-        set_load_error(result);
-        return false;
-    }
     bool loaded = false;
-    if (first_line == instant_v2_marker) loaded = load_v2(input, config, result);
-    else if (first_line == instant_v1_marker) loaded = load_v1(input, config, result);
-    else if (first_line.compare(0, 12, "#HALF_SAMPLE") != 0) {
-        input.clear();
-        input.seekg(0);
+    if (input.peek() == '#') {
+        std::string first_line;
+        if (read_bounded_line(input, first_line, max_marker_length) != ReadStatus::Record) {
+            set_load_error(result);
+            return false;
+        }
+        if (first_line == instant_v2_marker) loaded = load_v2(input, config, result);
+        else if (first_line == instant_v1_marker) loaded = load_v1(input, config, result);
+    } else if (input.peek() != std::char_traits<char>::eof()) {
         loaded = load_buffered(input, config, result);
     }
     if (!loaded) set_load_error(result);

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <fstream>
 #include <limits>
+#include <locale>
 #include <sstream>
 #include <string>
 
@@ -38,6 +39,11 @@ std::string valid_v2_header(int waveforms = 1) {
          << "planned_seconds,actual_seconds,voltage,read_success,read_error_code\n";
     return text.str();
 }
+
+class DecimalComma : public std::numpunct<char> {
+  protected:
+    char do_decimal_point() const override { return ','; }
+};
 
 void assert_failed_load_preserves_data(const std::string& contents) {
     write_text(fixture_path, contents);
@@ -180,11 +186,85 @@ void test_dump_format() {
         assert(result.totalSamplingBuffer[2] == 3.25);
     }
 
+    {
+        write_text(fixture_path, "1,2,3");
+        Config::SamplingConfig config;
+        assert(config.update(1, 100.0));
+        config.sampling_length_per_sample = 3;
+        config.sampling_time = 3;
+        config.dump_file_path = fixture_path;
+        Result::SamplingResult result(false);
+        assert(Sampler::Sampler::load_origin_data(config, result));
+        assert(result.totalSamplingBuffer.size() == 9);
+        assert(result.totalSamplingBuffer[0] == 1.0);
+        assert(result.totalSamplingBuffer[2] == 3.0);
+        assert(result.totalSamplingBuffer[3] == 0.0);
+        assert(result.totalSamplingBuffer[8] == 0.0);
+    }
+
+    {
+        write_text(fixture_path, "1,2,3,4,5,6,7,8");
+        Config::SamplingConfig config;
+        assert(config.update(1, 100.0));
+        config.sampling_length_per_sample = 8;
+        config.sampling_time = 6000000;
+        config.dump_file_path = fixture_path;
+        Result::SamplingResult result(false);
+        assert(Sampler::Sampler::load_origin_data(config, result));
+        assert(result.totalSamplingBuffer.size() == static_cast<std::size_t>(Constant::MaxBufferSize));
+        assert(result.totalSamplingBuffer[7] == 8.0);
+        assert(result.totalSamplingBuffer.back() == 0.0);
+    }
+
+    {
+        const std::locale previous = std::locale::global(std::locale(std::locale::classic(), new DecimalComma));
+        Config::SamplingConfig config;
+        assert(config.update(1, 0.05, 0.1, 100, 10.0));
+        config.dump_file_path = v2_path;
+        Result::SamplingResult result(false);
+        result.instant_ai_actual_duration_seconds = 40.0;
+        result.instant_ai_readings.push_back({0.25, 0.5, 1.25, true, 0});
+        assert(Sampler::Sampler::dump_origin_data(config, result));
+        assert(read_text(v2_path).find("emitting_frequency=0.05\n") != std::string::npos);
+        Config::SamplingConfig replay_config;
+        replay_config.dump_file_path = v2_path;
+        Result::SamplingResult replay(false);
+        assert(Sampler::Sampler::load_origin_data(replay_config, replay));
+        assert(replay.instant_ai_readings[0].voltage == 1.25);
+        std::locale::global(previous);
+    }
+
+    {
+        std::string crlf = valid_v2_header();
+        std::string converted;
+        for (char value : crlf) converted += value == '\n' ? "\r\n" : std::string(1, value);
+        converted += "0,0,5,1,0\r\n";
+        write_text(fixture_path, converted);
+        Config::SamplingConfig config;
+        config.dump_file_path = fixture_path;
+        Result::SamplingResult result(false);
+        assert(Sampler::Sampler::load_origin_data(config, result));
+        assert(result.instant_ai_readings.size() == 1);
+    }
+
     assert_failed_load_preserves_data("#HALF_SAMPLE_FUTURE\nanything\n");
     assert_failed_load_preserves_data("");
     assert_failed_load_preserves_data("#HALF_SAMPLE_INSTANT_AI_V2\nemitting_frequency=oops\n");
     assert_failed_load_preserves_data(valid_v2_header() + "0,0,5,maybe,0\n");
     assert_failed_load_preserves_data(valid_v2_header() + "0,0,nan,1,0\n");
+    assert_failed_load_preserves_data(valid_v2_header() + "-0.1,0,5,1,0\n");
+    assert_failed_load_preserves_data(valid_v2_header() + "41,0,5,1,0\n");
+    assert_failed_load_preserves_data(valid_v2_header() + "0,41,5,1,0\n");
+    assert_failed_load_preserves_data(valid_v2_header() + "0,0,5,1,7\n");
+    assert_failed_load_preserves_data(valid_v2_header() + "0,0,5,0,7\n");
+    assert_failed_load_preserves_data(valid_v2_header() + "0,0,nan,0,0\n");
+    assert_failed_load_preserves_data(valid_v2_header() + "0,0,nan,0,7,\n");
+    assert_failed_load_preserves_data(
+        "#HALF_SAMPLE_INSTANT_AI_V2\nemitting_frequency=" + std::string(4096, '0') +
+        "0.05\ntarget_points=100\nnumber_of_waveforms=1\nmax_reliable_polling_hz=10\n"
+        "planned_duration_seconds=40\nactual_duration_seconds=40\n" +
+        "planned_seconds,actual_seconds,voltage,read_success,read_error_code\n");
+    assert_failed_load_preserves_data(valid_v2_header() + std::string(4096, '0') + "0,0,5,1,0\n");
     assert_failed_load_preserves_data(
         "#HALF_SAMPLE_INSTANT_AI_V2\n"
         "emitting_frequency=0.05\n"
@@ -207,6 +287,54 @@ void test_dump_format() {
         assert(!Sampler::Sampler::load_origin_data(config, result));
         assert(result.error_code == Error::INVALID_INSTANT_AI_CONFIG);
         assert(result.totalSamplingBuffer.size() == 1 && result.totalSamplingBuffer[0] == 123.0);
+    }
+
+    {
+        Config::SamplingConfig config;
+        assert(config.update(1, 100.0));
+        config.sampling_length_per_sample = 3;
+        config.sampling_time = 1;
+        config.dump_file_path = fixture_path;
+        write_text(fixture_path, "1,2,3,");
+        Result::SamplingResult result(false);
+        assert(!Sampler::Sampler::load_origin_data(config, result));
+        assert(result.error_code == Error::INVALID_INSTANT_AI_CONFIG);
+    }
+
+    {
+        Config::SamplingConfig config;
+        assert(config.update(1, 100.0));
+        config.sampling_length_per_sample = 1;
+        config.sampling_time = 1;
+        config.dump_file_path = fixture_path;
+        write_text(fixture_path, std::string(4096, '0') + "1");
+        Result::SamplingResult result(false);
+        assert(!Sampler::Sampler::load_origin_data(config, result));
+        assert(result.error_code == Error::INVALID_INSTANT_AI_CONFIG);
+    }
+
+    {
+        Config::SamplingConfig config;
+        assert(config.update(1, 100.0));
+        config.sampling_length_per_sample = 3;
+        config.dump_file_path = fixture_path;
+        write_text(fixture_path, "original-content");
+        Result::SamplingResult result(false);
+        result.totalSamplingBuffer.assign(2, 1.0);
+        assert(!Sampler::Sampler::dump_origin_data(config, result));
+        assert(read_text(fixture_path) == "original-content");
+    }
+
+    {
+        Config::SamplingConfig config;
+        assert(config.update(1, 100.0));
+        config.sampling_length_per_sample = 3;
+        config.dump_file_path = fixture_path;
+        write_text(fixture_path, "keep-finite-original");
+        Result::SamplingResult result(false);
+        result.totalSamplingBuffer = {1.0, std::numeric_limits<double>::quiet_NaN(), 3.0};
+        assert(!Sampler::Sampler::dump_origin_data(config, result));
+        assert(read_text(fixture_path) == "keep-finite-original");
     }
 
     {
