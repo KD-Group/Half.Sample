@@ -81,6 +81,13 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(result.instant_ai_late_reads, 0)
         self.assertEqual(result.instant_ai_interpolated_bins, 0)
 
+    def test_readme_documents_retryable_state_separately_from_acquisition_failures(self):
+        readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Instant AI 采集失败的可重试类别", readme)
+        self.assertIn("`state` 表示生命周期或并发冲突", readme)
+        self.assertIn("当前测量结束后再试", readme)
+        self.assertIn("`state` 当前也是 `retryable=True`", readme)
+
     def test_is_measuring(self):
         result = sampler.communicate("is_measuring")
         self.assertEqual(result.measuring, False)

@@ -76,11 +76,12 @@ result = sampler.query()
 无法立即中断；取消会在该调用返回后生效。最终应继续轮询 `is_measuring` 并通过
 `query()` 确认 `cancelled=True`。
 
-`query()` 稳定公开 `error_category`、`retryable` 和 `cancelled`。可重试的类别为
-`read`、`schedule`、`alignment` 和 `waveform_count`；`config`、`coverage` 和
-`cancelled` 必须立即停止。应用层可采用“每次测量最多尝试 3 次”的策略，但应以返回的
-`retryable` 和 `error_category` 为准，不应匹配错误文本。每次重试都必须重新采集完整的
-`(N+1)/f` 窗口。
+`query()` 稳定公开 `error_category`、`retryable` 和 `cancelled`。Instant AI 采集失败的可重试类别
+为 `read`、`schedule`、`alignment` 和 `waveform_count`。此外，`state` 表示生命周期或并发冲突，
+`state` 当前也是 `retryable=True`；调用方应等待当前测量结束后再试，不能同时启动另一项采集。
+`config`、`coverage` 和 `cancelled` 必须立即停止。应用层可采用“每次测量最多尝试 3 次”的策略，
+但应以返回的 `retryable` 和 `error_category` 为准，不应匹配错误文本。每次采集失败后的重试都必须
+重新采集完整的 `(N+1)/f` 窗口。
 
 Instant AI 错误不会自动回退到 Buffered AI。原始数据回放显式兼容 Instant AI V2、
 Instant AI V1 和无标记 Buffered 三种格式；V2 保留计划/实际时间、读取成功状态和原生
