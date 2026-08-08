@@ -49,6 +49,29 @@ Schedule build_schedule(double emitting_frequency, int target_points, double min
     return result;
 }
 
+ContinuousSchedule build_continuous_schedule(double emitting_frequency, int requested_waveforms, int target_points,
+                                             double max_polling_frequency_hz) {
+    if (!std::isfinite(emitting_frequency) || emitting_frequency <= 0.0 || requested_waveforms <= 0 ||
+        target_points < 20 || !std::isfinite(max_polling_frequency_hz) || max_polling_frequency_hz <= 0.0) {
+        throw std::invalid_argument("invalid Instant AI continuous schedule");
+    }
+    ContinuousSchedule result;
+    result.polling_frequency_hz =
+        std::min(emitting_frequency * static_cast<double>(target_points), max_polling_frequency_hz);
+    result.duration_seconds = (requested_waveforms + 1.0) / emitting_frequency;
+    const long long point_count =
+        static_cast<long long>(std::llround(result.duration_seconds * result.polling_frequency_hz)) + 1;
+    if (point_count < 2) {
+        throw std::invalid_argument("invalid Instant AI continuous schedule point count");
+    }
+    result.planned_seconds.reserve(static_cast<std::size_t>(point_count));
+    for (long long i = 0; i < point_count; ++i) {
+        result.planned_seconds.push_back(i / result.polling_frequency_hz);
+    }
+    result.planned_seconds.back() = result.duration_seconds;
+    return result;
+}
+
 namespace {
 bool fill_bins(const TimedWaveform& readings, double frequency, int target_points, std::vector<double>& bins,
                int& interpolated, int& late_reads) {
@@ -142,10 +165,178 @@ bool align_wave(std::vector<double>& wave) {
     std::rotate(wave.begin(), wave.begin() + edge, wave.end());
     return true;
 }
+
+
+bool fill_continuous_cycle(const TimedReadings& readings, double start, double end, int target_points,
+                           std::vector<double>& bins, int& interpolated) {
+    std::vector<double> sums(static_cast<std::size_t>(target_points), 0.0);
+    std::vector<int> counts(static_cast<std::size_t>(target_points), 0);
+    const double duration = end - start;
+    for (const TimedReading& reading : readings) {
+        if (reading.actual_seconds < start || reading.actual_seconds >= end) {
+            continue;
+        }
+        double phase = (reading.actual_seconds - start) / duration;
+        int bin = static_cast<int>(phase * target_points + 1e-7);
+        bin = std::max(0, std::min(target_points - 1, bin));
+        sums[static_cast<std::size_t>(bin)] += reading.voltage;
+        counts[static_cast<std::size_t>(bin)]++;
+    }
+    bins.assign(static_cast<std::size_t>(target_points), 0.0);
+    int first_present = -1;
+    for (int i = 0; i < target_points; ++i) {
+        if (counts[static_cast<std::size_t>(i)] > 0) {
+            bins[static_cast<std::size_t>(i)] =
+                sums[static_cast<std::size_t>(i)] / counts[static_cast<std::size_t>(i)];
+            if (first_present < 0) {
+                first_present = i;
+            }
+        }
+    }
+    if (first_present < 0) {
+        return false;
+    }
+
+    int position = first_present;
+    do {
+        const int next = (position + 1) % target_points;
+        if (counts[static_cast<std::size_t>(next)] > 0) {
+            position = next;
+            continue;
+        }
+        int missing = 0;
+        int cursor = next;
+        while (counts[static_cast<std::size_t>(cursor)] == 0 && cursor != position) {
+            ++missing;
+            cursor = (cursor + 1) % target_points;
+        }
+        if (missing > 2 || cursor == position) {
+            return false;
+        }
+        const double left = bins[static_cast<std::size_t>(position)];
+        const double right = bins[static_cast<std::size_t>(cursor)];
+        for (int offset = 1; offset <= missing; ++offset) {
+            const int index = (position + offset) % target_points;
+            bins[static_cast<std::size_t>(index)] =
+                left + (right - left) * offset / static_cast<double>(missing + 1);
+            ++interpolated;
+        }
+        position = cursor;
+    } while (position != first_present);
+    return true;
+}
 } // namespace
 
-ReconstructionResult reconstruct(const std::vector<TimedWaveform>& waveforms, int requested_waveforms,
-                                 double emitting_frequency, int target_points) {
+ReconstructionResult reconstruct_continuous(const TimedReadings& input, int requested_waveforms,
+                                            double emitting_frequency, int target_points) {
+    ReconstructionResult result;
+    if (requested_waveforms <= 0 || target_points < 20 || !std::isfinite(emitting_frequency) ||
+        emitting_frequency <= 0.0) {
+        return result;
+    }
+
+    TimedReadings readings;
+    readings.reserve(input.size());
+    for (std::size_t i = 0; i < input.size(); ++i) {
+        const TimedReading& reading = input[i];
+        if (std::isfinite(reading.planned_seconds) && std::isfinite(reading.actual_seconds)) {
+            const double gap = i && std::isfinite(input[i - 1].planned_seconds)
+                                   ? reading.planned_seconds - input[i - 1].planned_seconds
+                                   : 0.1;
+            if (reading.actual_seconds - reading.planned_seconds > std::max(0.020, gap * 0.5)) {
+                ++result.late_reads;
+            }
+        }
+        if (reading.read_success && std::isfinite(reading.actual_seconds) && std::isfinite(reading.voltage)) {
+            readings.push_back(reading);
+        }
+    }
+    if (readings.empty()) {
+        return result;
+    }
+    std::stable_sort(readings.begin(), readings.end(), [](const TimedReading& left, const TimedReading& right) {
+        return left.actual_seconds < right.actual_seconds;
+    });
+
+    double minimum = readings.front().voltage;
+    double maximum = readings.front().voltage;
+    for (std::size_t i = 0; i < readings.size(); ++i) {
+        minimum = std::min(minimum, readings[i].voltage);
+        maximum = std::max(maximum, readings[i].voltage);
+    }
+    const double span = maximum - minimum;
+    if (span < Constant::MinVoltageAmplitude) {
+        return result;
+    }
+
+    const double lower = minimum + span * Constant::LowerBound;
+    const double upper = minimum + span * Constant::UpperBound;
+    std::vector<double> edges;
+    bool armed = false;
+    for (const TimedReading& reading : readings) {
+        if (reading.voltage <= lower) {
+            armed = true;
+        } else if (armed && reading.voltage >= upper) {
+            edges.push_back(reading.actual_seconds);
+            armed = false;
+        }
+    }
+    if (edges.empty()) {
+        return result;
+    }
+
+    const double theoretical_period = 1.0 / emitting_frequency;
+    int chain_start = -1;
+    for (int start = 0; start + requested_waveforms < static_cast<int>(edges.size()); ++start) {
+        bool compatible = true;
+        for (int cycle = 0; cycle < requested_waveforms; ++cycle) {
+            const double period = edges[static_cast<std::size_t>(start + cycle + 1)] -
+                                  edges[static_cast<std::size_t>(start + cycle)];
+            if (period < theoretical_period * 0.8 || period > theoretical_period * 1.2) {
+                compatible = false;
+                break;
+            }
+        }
+        if (compatible) {
+            chain_start = start;
+            break;
+        }
+    }
+    if (chain_start < 0) {
+        result.status = ReconstructionStatus::WaveformCountInsufficient;
+        return result;
+    }
+
+    result.averaged_half_wave.assign(static_cast<std::size_t>(target_points / 2), 0.0);
+    for (int cycle = 0; cycle < requested_waveforms; ++cycle) {
+        std::vector<double> bins;
+        if (!fill_continuous_cycle(readings, edges[static_cast<std::size_t>(chain_start + cycle)],
+                                   edges[static_cast<std::size_t>(chain_start + cycle + 1)], target_points, bins,
+                                   result.interpolated_bins)) {
+            result.status = ReconstructionStatus::CoverageInsufficient;
+            result.averaged_half_wave.clear();
+            return result;
+        }
+        const int baseline_points = std::min(10, std::max(5, target_points / 10));
+        double baseline = 0.0;
+        for (int i = 0; i < baseline_points; ++i) {
+            baseline += bins[static_cast<std::size_t>(target_points - 1 - i)];
+        }
+        baseline /= baseline_points;
+        for (int i = 0; i < target_points / 2; ++i) {
+            result.averaged_half_wave[static_cast<std::size_t>(i)] +=
+                (bins[static_cast<std::size_t>(i)] - baseline) / requested_waveforms;
+        }
+    }
+    result.status = ReconstructionStatus::Success;
+    result.success = true;
+    result.complete_waveforms = requested_waveforms;
+    return result;
+}
+
+ReconstructionResult reconstruct_legacy_waveforms(const std::vector<TimedWaveform>& waveforms,
+                                                  int requested_waveforms, double emitting_frequency,
+                                                  int target_points) {
     ReconstructionResult result;
     if (requested_waveforms <= 0 || target_points < 20 ||
         waveforms.size() != static_cast<std::size_t>(requested_waveforms)) {
@@ -172,7 +363,14 @@ ReconstructionResult reconstruct(const std::vector<TimedWaveform>& waveforms, in
         }
     }
     result.success = true;
+    result.status = ReconstructionStatus::Success;
+    result.complete_waveforms = requested_waveforms;
     return result;
+}
+
+ReconstructionResult reconstruct(const std::vector<TimedWaveform>& waveforms, int requested_waveforms,
+                                 double emitting_frequency, int target_points) {
+    return reconstruct_legacy_waveforms(waveforms, requested_waveforms, emitting_frequency, target_points);
 }
 
 } // namespace InstantAi
