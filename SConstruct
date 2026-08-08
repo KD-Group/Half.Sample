@@ -42,6 +42,7 @@ sample_instant_ai_test_sources = [
     'tests/sample_instant_ai/test_controller_owner.cpp',
     'tests/sample_instant_ai/test_instant_acquisition.cpp',
     'tests/sample_instant_ai/test_dump_format.cpp',
+    'tests/sample_instant_ai/test_processor_transaction.cpp',
     'src/config/sampling_config.cpp',
     'src/commander/base.cpp',
     'src/error/error.cpp',
@@ -49,6 +50,10 @@ sample_instant_ai_test_sources = [
     'src/sampler/instant_acquisition.cpp',
     'src/sampler/origin_data.cpp',
     'src/sampler/mock_sampler.cpp',
+    'src/estimate/estimate.cpp',
+    'src/global/global.cpp',
+    'src/processor/processor.cpp',
+    'src/commander/measure.cpp',
 ]
 sample_instant_ai_test = env.Program(
     'cpp_build/sample_instant_ai_unit_tests.exe',

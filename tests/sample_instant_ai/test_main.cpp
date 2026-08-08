@@ -8,6 +8,7 @@ void test_sampling_progress();
 void test_controller_owner();
 void test_instant_acquisition();
 void test_dump_format();
+void test_processor_transaction();
 
 int main() {
     test_sampling_config();
@@ -16,6 +17,7 @@ int main() {
     test_mock_sampler_controls();
     test_sampling_progress();
     test_controller_owner();
+    test_processor_transaction();
     test_instant_acquisition();
     test_dump_format();
     std::cout << "sample_instant_ai_unit_tests: PASS\n";

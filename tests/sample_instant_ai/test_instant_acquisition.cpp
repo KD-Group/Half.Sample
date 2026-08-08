@@ -1,7 +1,9 @@
 #include "../../src/sampler/instant_acquisition.hpp"
+#include "../../src/sampler/sampler.hpp"
 
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 
 namespace {
@@ -48,6 +50,40 @@ Sampler::InstantAi::ContinuousSchedule dense_schedule() {
 void test_instant_acquisition() {
     {
         Result::SamplingResult result;
+        result.progress.reset(1.0, 1);
+        FakePlatform platform;
+        platform.progress = &result.progress;
+        platform.cancel_during_read = true;
+        Sampler::InstantAi::ContinuousSchedule schedule;
+        schedule.duration_seconds = 1.0;
+        schedule.planned_seconds.push_back(0.5);
+        assert(!Sampler::InstantAi::run_continuous_acquisition(schedule, 1, platform, result));
+        assert(result.error_code == Error::USER_CANCELLED);
+        assert(result.cancelled);
+        assert(result.instant_ai_readings.size() == 1);
+        const Sampler::InstantAi::TimedReading& reading = result.instant_ai_readings[0];
+        assert(reading.read_success);
+        assert(reading.read_error_code == 0);
+        assert(reading.planned_seconds == 0.5);
+        assert(std::fabs(reading.actual_seconds - 0.51) < 1e-12);
+        assert(std::fabs(reading.completed_seconds - 0.81) < 1e-12);
+        assert(reading.voltage == 0.0);
+        assert(result.progress.successful_reads.load() == 1);
+
+        Config::SamplingConfig config;
+        assert(config.update(1, 0.05, 0.1, 100, 10.0));
+        config.dump_file_path = "cpp_build/cancel-during-read-v2.csv";
+        assert(Sampler::Sampler::dump_origin_data(config, result));
+        Result::SamplingResult replay;
+        assert(Sampler::Sampler::load_origin_data(config, replay));
+        assert(replay.instant_ai_readings.size() == 1);
+        assert(replay.instant_ai_readings[0].read_success);
+        assert(replay.instant_ai_readings[0].actual_seconds == reading.actual_seconds);
+        assert(replay.instant_ai_readings[0].voltage == reading.voltage);
+        std::remove(config.dump_file_path.c_str());
+    }
+    {
+        Result::SamplingResult result;
         result.progress.reset(4.0, 4);
         FakePlatform platform;
         platform.progress = &result.progress;
@@ -78,6 +114,9 @@ void test_instant_acquisition() {
         assert(result.instant_ai_readings.size() == 1);
         assert(!result.instant_ai_readings[0].read_success);
         assert(std::isnan(result.instant_ai_readings[0].voltage));
+        assert(result.instant_ai_readings[0].read_error_code == static_cast<int>(Error::ErrorDeviceIoTimeOut));
+        assert(std::fabs(result.instant_ai_readings[0].actual_seconds - 0.51) < 1e-12);
+        assert(std::fabs(result.instant_ai_readings[0].completed_seconds - 0.81) < 1e-12);
     }
     {
         Result::SamplingResult result;

@@ -78,12 +78,12 @@ bool run_continuous_acquisition(const ContinuousSchedule& schedule, int target_c
             finish(platform, result);
             return false;
         }
-        if (result.progress.cancel_requested.load(std::memory_order_acquire))
-            return cancel(platform, result);
         result.instant_ai_readings.push_back(
             {planned, timing.actual_seconds, voltage, true, 0, timing.completed_seconds});
         result.progress.successful_reads.fetch_add(1);
         result.progress.completed_cycles.store(cycles.observe(voltage));
+        if (result.progress.cancel_requested.load(std::memory_order_acquire))
+            return cancel(platform, result);
         if (timing.timed_out) {
             result.error_code = Error::INSTANT_AI_SCHEDULE_TIMEOUT;
             finish(platform, result);

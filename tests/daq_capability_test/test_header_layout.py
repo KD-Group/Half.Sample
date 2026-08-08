@@ -39,6 +39,16 @@ def compact_cpp(source):
 
 
 class HeaderLayoutTest(unittest.TestCase):
+    def test_cmake_includes_v2_origin_data_and_roundtrip_test(self):
+        source = (REPO_ROOT / "src/CMakeLists.txt").read_text(encoding="utf-8")
+        sample_target = source.split("add_executable(sample ", 1)[1].split("if (WIN32)", 1)[0]
+        unit_target = source.split("add_executable(sample_instant_ai_unit_tests", 1)[1].split(
+            "target_link_libraries(sample_instant_ai_unit_tests", 1
+        )[0]
+        self.assertIn("sampler/origin_data.cpp", sample_target)
+        self.assertIn("sampler/origin_data.cpp", unit_target)
+        self.assertIn("../tests/sample_instant_ai/test_dump_format.cpp", unit_target)
+
     def test_standalone_entry_initializes_windows_console_for_utf8_bytes(self):
         source = (REPO_ROOT / "src/daq_capability_test/main.cpp").read_text(encoding="utf-8")
 

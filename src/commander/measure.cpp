@@ -77,20 +77,7 @@ void publish_process_result(Result::SamplingResult& destination, Result::Samplin
 
 void publish_process_failure(Error::Code error_code) {
     Result::SamplingResult& result = Global::result;
-    std::vector<double>().swap(result.totalSamplingBuffer);
-    std::vector<double>().swap(result.resultWave);
-    std::vector<Sampler::InstantAi::TimedWaveform>().swap(result.instant_ai_waveforms);
-    Sampler::InstantAi::TimedReadings().swap(result.instant_ai_readings);
-    result.instant_ai_format_version = 0;
-    result.instant_ai_complete_waveforms = 0;
-    result.instant_ai_actual_duration_seconds = 0.0;
-    result.instant_ai_late_reads = 0;
-    result.instant_ai_interpolated_bins = 0;
     result.cancelled = false;
-    result.progress.reset(0.0, 0);
-    result.maximum = 0.0;
-    result.minimum = 0.0;
-    result.estimate = Estimate::EstimatedResult();
     result.success = false;
     result.error_code = error_code;
 }
@@ -237,12 +224,12 @@ void to_query() {
     } else {
         std::string message = Error::to_string(Global::result.error_code);
         Base::variable(message);
-        const double wave_interval = Global::result.estimate.interval;
+        const double wave_interval = 0.0;
         Base::variable(wave_interval);
     }
 
     printf("wave = [");
-    if (Global::result.estimate.y) {
+    if (success && Global::result.estimate.y) {
         const auto& values = *Global::result.estimate.y;
         for (double value : values) {
             printf("%.3f,", value);
