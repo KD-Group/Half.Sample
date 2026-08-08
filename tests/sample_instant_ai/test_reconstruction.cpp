@@ -152,4 +152,11 @@ void test_reconstruction() {
     const auto ignored_failures = Sampler::InstantAi::reconstruct_continuous(failed_rows, 1, 1.0, kPoints);
     assert(ignored_failures.status == Sampler::InstantAi::ReconstructionStatus::Success);
     assert(ignored_failures.late_reads == 1);
+
+    auto invalid_planned_times = make_continuous(0.0, 1);
+    for (auto& reading : invalid_planned_times) {
+        reading.planned_seconds = std::numeric_limits<double>::quiet_NaN();
+    }
+    assert(Sampler::InstantAi::reconstruct_continuous(invalid_planned_times, 1, 1.0, kPoints).status ==
+           Sampler::InstantAi::ReconstructionStatus::AlignmentFailed);
 }

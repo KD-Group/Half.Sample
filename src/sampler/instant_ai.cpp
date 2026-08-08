@@ -247,7 +247,8 @@ ReconstructionResult reconstruct_continuous(const TimedReadings& input, int requ
                 ++result.late_reads;
             }
         }
-        if (reading.read_success && std::isfinite(reading.actual_seconds) && std::isfinite(reading.voltage)) {
+        if (reading.read_success && std::isfinite(reading.planned_seconds) &&
+            std::isfinite(reading.actual_seconds) && std::isfinite(reading.voltage)) {
             readings.push_back(reading);
         }
     }
