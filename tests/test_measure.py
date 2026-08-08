@@ -7,6 +7,24 @@ from pathlib import Path
 from sample import Result, Sampler, sampler
 
 
+def wait_until_sampling_stops(is_measuring, cancel, timeout_seconds=5.0,
+                              monotonic=time.monotonic, sleep=time.sleep):
+    deadline = monotonic() + timeout_seconds
+    while is_measuring():
+        if monotonic() >= deadline:
+            try:
+                cancel()
+                cancel_diagnostic = "best-effort cancellation requested"
+            except Exception as error:
+                cancel_diagnostic = "best-effort cancellation failed: {!r}".format(error)
+            raise AssertionError(
+                "sampling remained active after {:.3f} seconds; {}".format(
+                    timeout_seconds, cancel_diagnostic
+                )
+            )
+        sleep(0.01)
+
+
 class MyTestCase(unittest.TestCase):
     def setUp(self):
         sampler.set_sampler(sampler_name="mock_sampler")
@@ -16,8 +34,10 @@ class MyTestCase(unittest.TestCase):
         sampler.set_sampler_value("mock_work_iterations", 0)
 
     def tearDown(self):
-        while sampler.is_measuring:
-            time.sleep(0.01)
+        wait_until_sampling_stops(
+            is_measuring=lambda: sampler.is_measuring,
+            cancel=sampler.cancel_sampling,
+        )
         sampler.set_sampler_value("mock_phase_offset", 0)
         sampler.set_sampler_value("mock_missing_bin_start", 0)
         sampler.set_sampler_value("mock_missing_bin_count", 0)
@@ -131,7 +151,28 @@ class MyTestCase(unittest.TestCase):
             time.sleep(0.01)
         self.assertTrue(sampler.query().success)
 
-    def test_public_progress_and_cancel_stop_active_mock_without_sleep(self):
+    def test_sampling_stop_wait_has_poll_delay_deadline_and_timeout_cleanup(self):
+        now = [0.0]
+        sleep_calls = []
+        cancel_calls = []
+
+        def fake_sleep(seconds):
+            sleep_calls.append(seconds)
+            now[0] += seconds
+
+        with self.assertRaisesRegex(AssertionError, "sampling remained active after 0.030 seconds"):
+            wait_until_sampling_stops(
+                is_measuring=lambda: True,
+                cancel=lambda: cancel_calls.append(True),
+                timeout_seconds=0.03,
+                monotonic=lambda: now[0],
+                sleep=fake_sleep,
+            )
+        self.assertGreaterEqual(len(sleep_calls), 3)
+        self.assertTrue(all(seconds == 0.01 for seconds in sleep_calls))
+        self.assertEqual(cancel_calls, [True])
+
+    def test_public_progress_and_cancel_stop_active_mock_with_bounded_wait(self):
         sampler.set_sampler_value("mock_work_iterations", 2000000000)
         sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
         progress = sampler.sampling_progress()
@@ -149,8 +190,10 @@ class MyTestCase(unittest.TestCase):
         with self.assertRaisesRegex(Sampler.Error, "now_in_measuring"):
             sampler.set_sampler_value("mock_tau", 100)
         sampler.cancel_sampling()
-        while sampler.is_measuring:
-            pass
+        wait_until_sampling_stops(
+            is_measuring=lambda: sampler.is_measuring,
+            cancel=sampler.cancel_sampling,
+        )
         result = sampler.query()
         self.assertFalse(result.success)
         self.assertTrue(result.cancelled)
