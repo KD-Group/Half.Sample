@@ -286,6 +286,71 @@ class MyTestCase(unittest.TestCase):
             replay = sampler.query()
             self.assertTrue(replay.success)
 
+    def test_instant_ai_v2_dump_is_self_contained_and_replays_after_config_changes(self):
+        sampler.set_sampler_value("mock_noise", 0)
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
+            dump_path = Path(directory) / "continuous-v2.csv"
+            sampler.dump(str(dump_path), 3, 0.05, instant_ai_frequency_threshold=0.1)
+            while sampler.is_measuring:
+                time.sleep(0.01)
+            captured = sampler.query()
+            self.assertTrue(captured.success, captured.message)
+
+            lines = dump_path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(lines[0], "#HALF_SAMPLE_INSTANT_AI_V2")
+            self.assertEqual(lines[1:8], [
+                "emitting_frequency=0.05",
+                "target_points=100",
+                "number_of_waveforms=3",
+                "max_reliable_polling_hz=10",
+                "planned_duration_seconds=80",
+                "actual_duration_seconds=80",
+                "planned_seconds,actual_seconds,voltage,read_success,read_error_code",
+            ])
+            self.assertEqual(len(lines), 8 + 401)
+
+            sampler.communicate("to_config 1 20 False")
+            sampler.process(str(dump_path))
+            replay = sampler.query()
+            self.assertTrue(replay.success, replay.message)
+            self.assertEqual(replay.acquisition_mode, "instant_ai")
+            self.assertEqual(replay.instant_ai_complete_waveforms, 3)
+            self.assertAlmostEqual(replay.instant_ai_planned_duration_seconds, 80.0)
+            self.assertAlmostEqual(replay.instant_ai_actual_duration_seconds, 80.0)
+            self.assertEqual(replay.instant_ai_late_reads, 0)
+
+    def test_failed_process_clears_previous_wave_and_keeps_stable_error(self):
+        sampler.set_sampler_value("mock_noise", 0)
+        sampler.measure(1, 0.05, instant_ai_frequency_threshold=0.1)
+        while sampler.is_measuring:
+            time.sleep(0.01)
+        self.assertTrue(sampler.query().success)
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
+            malformed = Path(directory) / "malformed-v2.csv"
+            malformed.write_text("#HALF_SAMPLE_INSTANT_AI_V2\nemitting_frequency=bad\n", encoding="utf-8")
+            sampler.process(str(malformed))
+            failed = sampler.query()
+            self.assertFalse(failed.success)
+            self.assertEqual(failed.message, "invalid_instant_ai_config")
+            self.assertEqual(failed.wave, [])
+            self.assertEqual(failed.wave_interval, 0.0)
+
+    def test_unmarked_buffered_dump_remains_replayable(self):
+        sampler.set_sampler_value("mock_noise", 0)
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
+            dump_path = Path(directory) / "buffered.csv"
+            sampler.dump(str(dump_path), 3, 100000.0)
+            while sampler.is_measuring:
+                time.sleep(0.01)
+            captured = sampler.query()
+            self.assertTrue(captured.success, captured.message)
+            self.assertFalse(dump_path.read_text(encoding="utf-8").startswith("#HALF_SAMPLE"))
+
+            sampler.process(str(dump_path))
+            replay = sampler.query()
+            self.assertTrue(replay.success, replay.message)
+            self.assertEqual(replay.acquisition_mode, "buffered_ai")
+
     def test_empty_legacy_instant_ai_v1_returns_stable_failure(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
             dump_path = Path(directory) / "empty-instant.csv"

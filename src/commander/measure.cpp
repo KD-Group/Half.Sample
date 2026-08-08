@@ -4,6 +4,7 @@
 #include "../processor/processor.hpp"
 #include <cstring>
 #include <sstream>
+#include <utility>
 
 #ifdef _WIN32
 
@@ -47,6 +48,51 @@ bool parse_instant_options(const std::string& line_tail, InstantOptions& instant
     }
     options >> std::ws;
     return options.eof();
+}
+
+void publish_process_result(Result::SamplingResult& destination, Result::SamplingResult& source) {
+    destination.totalSamplingBuffer = std::move(source.totalSamplingBuffer);
+    destination.resultWave = std::move(source.resultWave);
+    destination.instant_ai_waveforms = std::move(source.instant_ai_waveforms);
+    destination.instant_ai_readings = std::move(source.instant_ai_readings);
+    destination.instant_ai_format_version = source.instant_ai_format_version;
+    destination.instant_ai_complete_waveforms = source.instant_ai_complete_waveforms;
+    destination.instant_ai_actual_duration_seconds = source.instant_ai_actual_duration_seconds;
+    destination.instant_ai_late_reads = source.instant_ai_late_reads;
+    destination.instant_ai_interpolated_bins = source.instant_ai_interpolated_bins;
+    destination.cancelled = source.cancelled;
+    destination.maximum = source.maximum;
+    destination.minimum = source.minimum;
+    destination.estimate = std::move(source.estimate);
+    destination.success = source.success;
+    destination.error_code = source.error_code;
+    destination.progress.planned_milliseconds.store(source.progress.planned_milliseconds.load());
+    destination.progress.elapsed_milliseconds.store(source.progress.elapsed_milliseconds.load());
+    destination.progress.completed_cycles.store(source.progress.completed_cycles.load());
+    destination.progress.target_cycles.store(source.progress.target_cycles.load());
+    destination.progress.successful_reads.store(source.progress.successful_reads.load());
+    destination.progress.late_reads.store(source.progress.late_reads.load());
+    destination.progress.cancel_requested.store(source.progress.cancel_requested.load());
+}
+
+void publish_process_failure(Error::Code error_code) {
+    Result::SamplingResult& result = Global::result;
+    std::vector<double>().swap(result.totalSamplingBuffer);
+    std::vector<double>().swap(result.resultWave);
+    std::vector<Sampler::InstantAi::TimedWaveform>().swap(result.instant_ai_waveforms);
+    Sampler::InstantAi::TimedReadings().swap(result.instant_ai_readings);
+    result.instant_ai_format_version = 0;
+    result.instant_ai_complete_waveforms = 0;
+    result.instant_ai_actual_duration_seconds = 0.0;
+    result.instant_ai_late_reads = 0;
+    result.instant_ai_interpolated_bins = 0;
+    result.cancelled = false;
+    result.progress.reset(0.0, 0);
+    result.maximum = 0.0;
+    result.minimum = 0.0;
+    result.estimate = Estimate::EstimatedResult();
+    result.success = false;
+    result.error_code = error_code;
 }
 
 } // namespace
@@ -280,30 +326,34 @@ void to_process() {
         Base::error(Error::NOW_IN_MEASURING);
         return;
     }
-    clear_measure_data();
-    bool& success = Global::result.success;
-    success = true;
-
-    Global::config.dump_file_path = dump_file_path;
-    success = Sampler::Sampler::load_origin_data(Global::config, Global::result);
+    Config::SamplingConfig pending_config = Global::config;
+    pending_config.dump_file_path = dump_file_path;
+    Result::SamplingResult pending_result(false);
+    bool success = Sampler::Sampler::load_origin_data(pending_config, pending_result);
     do {
         if (!success)
             break;
 
-        success = Processor::align(Global::config, Global::result);
+        success = Processor::align(pending_config, pending_result);
         if (!success)
             break;
 
-        success = Processor::summation(Global::config, Global::result);
+        success = Processor::summation(pending_config, pending_result);
         if (!success)
             break;
 
-        success = Processor::estimate(Global::config, Global::result);
+        success = Processor::estimate(pending_config, pending_result);
         if (!success)
             break;
     } while (false);
 
-    Global::result.measuring.store(false, std::memory_order_release);
+    pending_result.success = success;
+    if (success) {
+        Global::config = pending_config;
+        publish_process_result(Global::result, pending_result);
+    } else {
+        publish_process_failure(pending_result.error_code);
+    }
 }
 
 void clear_measure_data() {

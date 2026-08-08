@@ -67,9 +67,13 @@ struct SamplingProgress {
 };
 
 struct SamplingResult {
+    explicit SamplingResult(bool allocate_buffers = true)
+        : totalSamplingBuffer(allocate_buffers ? static_cast<std::size_t>(Constant::MaxBufferSize) : 0u, 0.0),
+          resultWave(allocate_buffers ? static_cast<std::size_t>(Constant::MaxBufferSize / 16) : 0u, 0.0) {}
+
     SamplingProgress progress;
-    std::vector<double> totalSamplingBuffer = std::vector<double>(Constant::MaxBufferSize, 0.0);
-    std::vector<double> resultWave = std::vector<double>(Constant::MaxBufferSize / 16, 0.0);
+    std::vector<double> totalSamplingBuffer;
+    std::vector<double> resultWave;
     std::vector<Sampler::InstantAi::TimedWaveform> instant_ai_waveforms;
     Sampler::InstantAi::TimedReadings instant_ai_readings;
     int instant_ai_format_version{};

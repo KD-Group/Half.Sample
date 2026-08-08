@@ -37,6 +37,10 @@ void test_sampling_progress() {
     static_assert(std::is_same<decltype(Result::SamplingResult().measuring), std::atomic<bool>>::value,
                   "measuring must synchronize the command and worker threads");
 
+    Result::SamplingResult deferred(false);
+    assert(deferred.totalSamplingBuffer.empty());
+    assert(deferred.resultWave.empty());
+
     const Sampler::InstantAi::ReadTiming slow =
         Sampler::InstantAi::evaluate_read_timing(0.5, 0.51, 1.6, 0.4, 1.5);
     assert(slow.actual_seconds == 0.51);

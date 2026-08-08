@@ -30,6 +30,7 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
                     result.cancelled = true;
                     result.instant_ai_actual_duration_seconds =
                         result.progress.elapsed_milliseconds.load() / 1000.0;
+                    dump_origin_data(config, result);
                     return false;
                 }
                 const double fraction = mock_work_iterations > 0
@@ -52,6 +53,7 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
                 result.cancelled = true;
                 result.instant_ai_actual_duration_seconds =
                     result.progress.elapsed_milliseconds.load() / 1000.0;
+                dump_origin_data(config, result);
                 return false;
             }
             const double cycles = planned * config.emitting_frequency + mock_phase_offset;
@@ -82,8 +84,7 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
         }
         result.instant_ai_actual_duration_seconds = schedule.duration_seconds;
         result.progress.update_elapsed(schedule.duration_seconds);
-        dump_origin_data(config, result);
-        return true;
+        return dump_origin_data(config, result);
     }
 
     auto buffer = result.totalSamplingBuffer.data();

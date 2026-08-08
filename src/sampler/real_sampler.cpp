@@ -90,6 +90,7 @@ bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::S
     if (!controller.get()) {
         result.instant_ai_actual_duration_seconds = 0.0;
         result.error_code = Error::ErrorHandleNotValid;
+        dump_origin_data(config, result);
         return false;
     }
     DeviceInformation device(device_description);
@@ -97,6 +98,7 @@ bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::S
     if (BioFailed(code)) {
         result.instant_ai_actual_duration_seconds = 0.0;
         result.error_code = static_cast<Error::Code>(code);
+        dump_origin_data(config, result);
         return false;
     }
     controller->getChannels()->getItem(0).setValueRange(V_Neg5To5);
@@ -105,8 +107,10 @@ bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::S
         config.emitting_frequency, config.number_of_waveforms,
         config.instant_ai_target_points_per_waveform, config.instant_ai_max_reliable_polling_hz);
     RealInstantPlatform platform(controller.get(), result);
-    if (!InstantAi::run_continuous_acquisition(schedule, config.number_of_waveforms + 1, platform, result))
+    if (!InstantAi::run_continuous_acquisition(schedule, config.number_of_waveforms + 1, platform, result)) {
+        dump_origin_data(config, result);
         return false;
+    }
     return dump_origin_data(config, result);
 }
 } // namespace Sampler
