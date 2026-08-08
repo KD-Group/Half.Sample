@@ -145,6 +145,11 @@ void test_reconstruction() {
     assert(Sampler::InstantAi::reconstruct_continuous(make_edges(incompatible_edges, 4), 2, 1.0, kPoints).status ==
            Sampler::InstantAi::ReconstructionStatus::WaveformCountInsufficient);
 
+    const double sparse_edges[] = {0.2, 1.2};
+    assert(Sampler::InstantAi::reconstruct_continuous(
+               make_edges(sparse_edges, 2), std::numeric_limits<int>::max(), 1.0, kPoints)
+               .status == Sampler::InstantAi::ReconstructionStatus::WaveformCountInsufficient);
+
     const auto clean_two_cycles = make_continuous(0.0, 2);
     const auto clean_two_cycle_result =
         Sampler::InstantAi::reconstruct_continuous(clean_two_cycles, 2, 1.0, kPoints);

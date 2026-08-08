@@ -286,6 +286,11 @@ ReconstructionResult reconstruct_continuous(const TimedReadings& input, int requ
         return result;
     }
 
+    const std::size_t required_edge_count = static_cast<std::size_t>(requested_waveforms) + std::size_t(1);
+    if (edges.size() < required_edge_count) {
+        result.status = ReconstructionStatus::WaveformCountInsufficient;
+        return result;
+    }
     const double theoretical_period = 1.0 / emitting_frequency;
     const std::size_t edge_count = edges.size();
     const double infinity = std::numeric_limits<double>::infinity();
@@ -300,8 +305,13 @@ ReconstructionResult reconstruct_continuous(const TimedReadings& input, int requ
         for (std::size_t edge = 0; edge < edge_count; ++edge) {
             for (std::size_t next = edge + 1; next < edge_count; ++next) {
                 const double period = edges[next] - edges[edge];
-                if (period < theoretical_period * 0.8 || period > theoretical_period * 1.2 ||
-                    !std::isfinite(chain_cost[static_cast<std::size_t>(remaining - 1)][next])) {
+                if (period < theoretical_period * 0.8) {
+                    continue;
+                }
+                if (period > theoretical_period * 1.2) {
+                    break;
+                }
+                if (!std::isfinite(chain_cost[static_cast<std::size_t>(remaining - 1)][next])) {
                     continue;
                 }
                 const double cost = std::fabs(period - theoretical_period) +
