@@ -32,7 +32,8 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
             const int missing_offset =
                 (phase_bin - mock_missing_bin_start + config.instant_ai_target_points_per_waveform) %
                 config.instant_ai_target_points_per_waveform;
-            if (mock_missing_bin_count > 0 && missing_offset < mock_missing_bin_count) {
+            const bool terminal_read = planned == schedule.planned_seconds.back();
+            if (!terminal_read && mock_missing_bin_count > 0 && missing_offset < mock_missing_bin_count) {
                 continue;
             }
             double voltage = 0.0;

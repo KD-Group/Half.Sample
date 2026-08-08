@@ -164,6 +164,41 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(result.wave_interval, 0.0)
         self.assertEqual(result.wave, [])
 
+    def test_instant_ai_continuous_mock_preserves_terminal_edge_when_bin_zero_is_missing(self):
+        sampler.set_sampler(sampler_name="mock_sampler")
+        sampler.set_sampler_value("mock_noise", 0)
+        sampler.set_sampler_value("mock_phase_offset", 0)
+        sampler.set_sampler_value("mock_missing_bin_start", 0)
+        sampler.set_sampler_value("mock_missing_bin_count", 2)
+        try:
+            sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
+            while sampler.is_measuring:
+                time.sleep(0.01)
+            result = sampler.query()
+            self.assertTrue(result.success, result.message)
+            self.assertGreaterEqual(result.instant_ai_interpolated_bins, 2)
+        finally:
+            sampler.set_sampler_value("mock_missing_bin_start", 0)
+            sampler.set_sampler_value("mock_missing_bin_count", 0)
+
+    def test_instant_ai_continuous_mock_wraparound_missing_run_reaches_coverage_error(self):
+        sampler.set_sampler(sampler_name="mock_sampler")
+        sampler.set_sampler_value("mock_noise", 0)
+        sampler.set_sampler_value("mock_phase_offset", 0)
+        sampler.set_sampler_value("mock_missing_bin_start", 98)
+        sampler.set_sampler_value("mock_missing_bin_count", 3)
+        try:
+            sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
+            while sampler.is_measuring:
+                time.sleep(0.01)
+            result = sampler.query()
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_category, "coverage")
+            self.assertFalse(result.retryable)
+        finally:
+            sampler.set_sampler_value("mock_missing_bin_start", 0)
+            sampler.set_sampler_value("mock_missing_bin_count", 0)
+
     def test_legacy_instant_ai_v1_dump_can_be_replayed(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
             dump_path = Path(directory) / "instant.csv"
