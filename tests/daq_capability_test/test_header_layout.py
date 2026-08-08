@@ -39,6 +39,11 @@ def compact_cpp(source):
 
 
 class HeaderLayoutTest(unittest.TestCase):
+    def test_mock_sampler_declares_algorithm_dependency(self):
+        source = (REPO_ROOT / "src/sampler/mock_sampler.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("#include <algorithm>", source)
+
     def test_cmake_includes_v2_origin_data_and_roundtrip_test(self):
         source = (REPO_ROOT / "src/CMakeLists.txt").read_text(encoding="utf-8")
         sample_target = source.split("add_executable(sample ", 1)[1].split("if (WIN32)", 1)[0]
