@@ -88,6 +88,12 @@ class Result:
         self.error_category = ""
         self.retryable = False
         self.cancelled = False
+        self.planned_seconds = 0.0
+        self.elapsed_seconds = 0.0
+        self.completed_cycles = 0
+        self.target_cycles = 0
+        self.successful_reads = 0
+        self.late_reads = 0
         self.instant_ai_complete_waveforms = 0
         self.instant_ai_planned_duration_seconds = 0.0
         self.instant_ai_actual_duration_seconds = 0.0

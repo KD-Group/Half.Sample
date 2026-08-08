@@ -24,36 +24,67 @@ cpp_build\daq_capability_test_legacy.exe --help
 cpp_build\daq_capability_test_xnavi.exe --help
 ```
 
-## sample.exe自动选择Instant AI
+## sample.exe自动选择 Instant AI
 
-Python测量接口支持通过外部发射频率阈值选择采集方式：
+应用层应把下列三项作为全局采集卡设置，并在每次 `measure` 或 `dump` 时一起传入。
+推荐的出厂默认值为：
+
+- `instant_ai_frequency_threshold=0.1` Hz：Instant/Buffered 切换阈值。
+- `instant_ai_target_points_per_waveform=100`：每个完整波形的目标重建点数。
+- `instant_ai_max_reliable_polling_hz=10`：驱动可靠软件轮询频率上限。
 
 ```python
+from sample import sampler
+
 sampler.measure(
     number_of_waveforms=3,
-    emitting_frequency=0.1,
-    instant_ai_frequency_threshold=0.5,
+    emitting_frequency=0.05,
+    instant_ai_frequency_threshold=0.1,
+    instant_ai_target_points_per_waveform=100,
+    instant_ai_max_reliable_polling_hz=10,
 )
 ```
 
-阈值默认为0，此时所有旧调用继续使用Buffered AI。阈值大于0时，发射频率小于等于阈值
-选择legacy Instant AI；高于阈值选择原有Buffered AI。Buffered AI内部原有规则保持不变：
-发射频率低于10Hz使用1MHz，否则使用20MHz。
+当阈值大于 0 且发射频率小于等于阈值时选择 legacy Instant AI；高于阈值时
+选择原有 Buffered AI。Python API 的阈值参数仍默认为 0，以保证未传新参数的旧程序继续
+使用 Buffered AI；新集成应显式传入上述三个推荐值。Buffered AI 原有规则保持不变：发射
+频率低于 10 Hz 使用 1 MHz，否则使用 20 MHz。
 
-Instant AI默认将每个等效完整波形重建为100点，平均次数来自
-`number_of_waveforms`。在0.1Hz、3次平均时主体采集时间约30秒。可显式调整目标点数：
+Instant AI 只启动一次连续采集会话。若要得到 `N` 个完整波形，因开始相位未知，计划采集
+窗口固定为 `(N+1)/f` 秒，不把 `N` 个周期拆成独立任务。例如 `f=0.05 Hz`、`N=1`
+时计划采集 `(1+1)/0.05 = 40` 秒。实际轮询率为
+`min(f * target_points, max_reliable_polling_hz)`。
+
+采集启动后可轮询进度或请求取消：
 
 ```python
-sampler.measure(
-    number_of_waveforms=5,
-    emitting_frequency=0.1,
-    instant_ai_frequency_threshold=0.5,
-    instant_ai_target_points_per_waveform=500,
-)
+import time
+
+while sampler.is_measuring:
+    progress = sampler.sampling_progress()
+    print(progress.elapsed_seconds, progress.planned_seconds,
+          progress.completed_cycles, progress.target_cycles,
+          progress.successful_reads, progress.late_reads)
+    # 用户取消时：
+    # sampler.cancel_sampling()
+    time.sleep(0.2)
+
+result = sampler.query()
 ```
 
-更低的发射频率不可能快于波形自身周期。Instant AI读取、相位覆盖或重建失败时直接返回
-错误，不会自动回退到Buffered AI。本功能只支持legacy驱动。
+`cancel_sampling()` 是取消请求，不是强制终止线程。真实采集卡的同步 `ReadAny()` 调用期间
+无法立即中断；取消会在该调用返回后生效。最终应继续轮询 `is_measuring` 并通过
+`query()` 确认 `cancelled=True`。
+
+`query()` 稳定公开 `error_category`、`retryable` 和 `cancelled`。可重试的类别为
+`read`、`schedule`、`alignment` 和 `waveform_count`；`config`、`coverage` 和
+`cancelled` 必须立即停止。应用层可采用“每次测量最多尝试 3 次”的策略，但应以返回的
+`retryable` 和 `error_category` 为准，不应匹配错误文本。每次重试都必须重新采集完整的
+`(N+1)/f` 窗口。
+
+Instant AI 错误不会自动回退到 Buffered AI。原始数据回放显式兼容 Instant AI V2、
+Instant AI V1 和无标记 Buffered 三种格式；V2 保留计划/实际时间、读取成功状态和原生
+错误码。Instant AI 采集仅支持 legacy 驱动。
 
 ## Legacy Instant AI 轮询验证
 

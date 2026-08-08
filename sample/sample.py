@@ -87,6 +87,12 @@ class Sampler:
     def process(self, filename: str) -> Result:
         return self.communicate("to_process {}".format(filename))
 
+    def sampling_progress(self) -> Result:
+        return self.communicate("to_sampling_progress")
+
+    def cancel_sampling(self) -> Result:
+        return self.communicate("to_cancel_sampling")
+
     def set_sampler(self, sampler_name: str) -> Result:
         return self.communicate("set_sampler {}".format(sampler_name))
 

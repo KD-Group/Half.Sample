@@ -4,7 +4,7 @@ import time
 import tempfile
 import unittest
 from pathlib import Path
-from sample import Sampler, sampler
+from sample import Result, Sampler, sampler
 
 
 class MyTestCase(unittest.TestCase):
@@ -57,6 +57,30 @@ class MyTestCase(unittest.TestCase):
             "to_dump capture.csv 3 0.05 False 0.1 100 9.5",
         )
 
+    def test_progress_and_cancel_methods_send_exact_commands(self):
+        client = Sampler()
+        client.communicate = lambda command, executor=None: command
+        self.assertEqual(client.sampling_progress(), "to_sampling_progress")
+        self.assertEqual(client.cancel_sampling(), "to_cancel_sampling")
+
+    def test_result_has_backward_compatible_instant_ai_defaults(self):
+        result = Result()
+        self.assertEqual(result.error_category, "")
+        self.assertFalse(result.retryable)
+        self.assertFalse(result.cancelled)
+        self.assertEqual(result.planned_seconds, 0.0)
+        self.assertEqual(result.elapsed_seconds, 0.0)
+        self.assertEqual(result.completed_cycles, 0)
+        self.assertEqual(result.target_cycles, 0)
+        self.assertEqual(result.successful_reads, 0)
+        self.assertEqual(result.late_reads, 0)
+        self.assertEqual(result.acquisition_mode, "")
+        self.assertEqual(result.instant_ai_complete_waveforms, 0)
+        self.assertEqual(result.instant_ai_planned_duration_seconds, 0.0)
+        self.assertEqual(result.instant_ai_actual_duration_seconds, 0.0)
+        self.assertEqual(result.instant_ai_late_reads, 0)
+        self.assertEqual(result.instant_ai_interpolated_bins, 0)
+
     def test_is_measuring(self):
         result = sampler.communicate("is_measuring")
         self.assertEqual(result.measuring, False)
@@ -100,23 +124,32 @@ class MyTestCase(unittest.TestCase):
             time.sleep(0.01)
         self.assertTrue(sampler.query().success)
 
-    def test_raw_progress_and_cancel_stop_mock_without_sleep(self):
+    def test_public_progress_and_cancel_stop_active_mock_without_sleep(self):
         sampler.set_sampler_value("mock_work_iterations", 2000000000)
         sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
-        progress = sampler.communicate("to_sampling_progress")
+        progress = sampler.sampling_progress()
         self.assertTrue(progress.measuring)
+        self.assertAlmostEqual(progress.planned_seconds, 80.0)
         self.assertGreaterEqual(progress.elapsed_seconds, 0.0)
+        self.assertLessEqual(progress.elapsed_seconds, progress.planned_seconds)
+        self.assertGreaterEqual(progress.completed_cycles, 0)
+        self.assertLessEqual(progress.completed_cycles, progress.target_cycles)
+        self.assertEqual(progress.target_cycles, 4)
+        self.assertGreaterEqual(progress.successful_reads, 0)
+        self.assertGreaterEqual(progress.late_reads, 0)
         with self.assertRaisesRegex(Sampler.Error, "now_in_measuring"):
             sampler.set_sampler("mock_sampler")
         with self.assertRaisesRegex(Sampler.Error, "now_in_measuring"):
             sampler.set_sampler_value("mock_tau", 100)
-        sampler.communicate("to_cancel_sampling")
+        sampler.cancel_sampling()
         while sampler.is_measuring:
             pass
         result = sampler.query()
         self.assertFalse(result.success)
         self.assertTrue(result.cancelled)
         self.assertEqual(result.message, "user_cancelled")
+        self.assertEqual(result.error_category, "cancelled")
+        self.assertFalse(result.retryable)
 
     def test_mock_missing_bin_controls_reject_invalid_values(self):
         sampler.set_sampler_value("mock_missing_bin_start", 7)
