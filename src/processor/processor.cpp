@@ -10,8 +10,29 @@ namespace Commander {
 namespace Processor {
 
 bool align(const Config::SamplingConfig& config, Result::SamplingResult& result) {
-    result.maximum = *std::max_element(result.totalSamplingBuffer.begin(), result.totalSamplingBuffer.end());
-    result.minimum = *std::min_element(result.totalSamplingBuffer.begin(), result.totalSamplingBuffer.end());
+    if (config.is_instant() && result.instant_ai_format_version >= 2) {
+        bool found_valid_reading = false;
+        for (const auto& reading : result.instant_ai_readings) {
+            if (!reading.read_success || !std::isfinite(reading.voltage)) {
+                continue;
+            }
+            if (!found_valid_reading) {
+                result.minimum = reading.voltage;
+                result.maximum = reading.voltage;
+                found_valid_reading = true;
+            } else {
+                result.minimum = std::min(result.minimum, reading.voltage);
+                result.maximum = std::max(result.maximum, reading.voltage);
+            }
+        }
+        if (!found_valid_reading) {
+            result.error_code = Error::VOLTAGE_NOT_ENOUGH;
+            return false;
+        }
+    } else {
+        result.maximum = *std::max_element(result.totalSamplingBuffer.begin(), result.totalSamplingBuffer.end());
+        result.minimum = *std::min_element(result.totalSamplingBuffer.begin(), result.totalSamplingBuffer.end());
+    }
 
     if (result.maximum - result.minimum < Constant::MinVoltageAmplitude) {
         result.error_code = Error::VOLTAGE_NOT_ENOUGH;
@@ -44,16 +65,31 @@ bool align(const Config::SamplingConfig& config, Result::SamplingResult& result)
          */
 bool summation(const Config::SamplingConfig& config, Result::SamplingResult& result) {
     if (config.is_instant()) {
-        const auto reconstructed =
-            Sampler::InstantAi::reconstruct(result.instant_ai_waveforms, config.number_of_waveforms,
-                                            config.emitting_frequency, config.instant_ai_target_points_per_waveform);
+        const auto reconstructed = result.instant_ai_format_version >= 2
+                                       ? Sampler::InstantAi::reconstruct_continuous(
+                                             result.instant_ai_readings, config.number_of_waveforms,
+                                             config.emitting_frequency, config.instant_ai_target_points_per_waveform)
+                                       : Sampler::InstantAi::reconstruct_legacy_waveforms(
+                                             result.instant_ai_waveforms, config.number_of_waveforms,
+                                             config.emitting_frequency, config.instant_ai_target_points_per_waveform);
         if (!reconstructed.success) {
-            result.error_code =
-                result.instant_ai_waveforms.size() != static_cast<std::size_t>(config.number_of_waveforms)
-                    ? Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT
-                    : Error::INSTANT_AI_COVERAGE_INSUFFICIENT;
+            switch (reconstructed.status) {
+            case Sampler::InstantAi::ReconstructionStatus::AlignmentFailed:
+                result.error_code = Error::INSTANT_AI_ALIGNMENT_FAILED;
+                break;
+            case Sampler::InstantAi::ReconstructionStatus::WaveformCountInsufficient:
+                result.error_code = Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT;
+                break;
+            case Sampler::InstantAi::ReconstructionStatus::CoverageInsufficient:
+                result.error_code = Error::INSTANT_AI_COVERAGE_INSUFFICIENT;
+                break;
+            case Sampler::InstantAi::ReconstructionStatus::Success:
+                result.error_code = Error::INSTANT_AI_ALIGNMENT_FAILED;
+                break;
+            }
             return false;
         }
+        result.instant_ai_complete_waveforms = reconstructed.complete_waveforms;
         result.instant_ai_late_reads = reconstructed.late_reads;
         result.instant_ai_interpolated_bins = reconstructed.interpolated_bins;
         result.resultWave = reconstructed.averaged_half_wave;

@@ -132,6 +132,18 @@ void to_query() {
     Base::variable(success);
     std::string acquisition_mode = Global::config.is_instant() ? "instant_ai" : "buffered_ai";
     Base::variable(acquisition_mode);
+    std::string error_category = Error::category(Global::result.error_code);
+    bool retryable = Error::retryable(Global::result.error_code);
+    bool cancelled = Global::result.cancelled || Global::result.error_code == Error::USER_CANCELLED;
+    int instant_ai_complete_waveforms = Global::result.instant_ai_complete_waveforms;
+    double instant_ai_planned_duration_seconds = Global::config.instant_ai_planned_duration_seconds;
+    double instant_ai_actual_duration_seconds = Global::result.instant_ai_actual_duration_seconds;
+    Base::variable(error_category);
+    Base::variable(retryable);
+    Base::variable(cancelled);
+    Base::variable(instant_ai_complete_waveforms);
+    Base::variable(instant_ai_planned_duration_seconds);
+    Base::variable(instant_ai_actual_duration_seconds);
     int instant_ai_late_reads = Global::result.instant_ai_late_reads;
     int instant_ai_interpolated_bins = Global::result.instant_ai_interpolated_bins;
     Base::variable(instant_ai_late_reads);
@@ -240,19 +252,28 @@ void to_process() {
 
 void clear_measure_data() {
     Global::result.instant_ai_waveforms.clear();
+    Global::result.instant_ai_readings.clear();
+    Global::result.instant_ai_format_version = 0;
+    Global::result.instant_ai_complete_waveforms = 0;
+    Global::result.instant_ai_actual_duration_seconds = 0.0;
     Global::result.instant_ai_late_reads = 0;
     Global::result.instant_ai_interpolated_bins = 0;
+    Global::result.cancelled = false;
+    Global::result.error_code = Error::SUCCESS;
+    Global::result.maximum = 0.0;
+    Global::result.minimum = 0.0;
+    Global::result.estimate = Estimate::EstimatedResult();
     if (Global::config.is_instant()) {
-        Global::result.totalSamplingBuffer.resize(Global::config.sampling_length_per_sample);
-        Global::result.resultWave.resize(Global::config.valid_length);
+        Global::result.totalSamplingBuffer =
+            std::vector<double>(static_cast<std::size_t>(Global::config.sampling_length_per_sample), 0.0);
+        Global::result.resultWave = std::vector<double>(static_cast<std::size_t>(Global::config.valid_length), 0.0);
     } else {
-        Global::result.totalSamplingBuffer.resize(Global::config.sampling_length_per_sample *
-                                                  Global::config.sampling_time);
-        Global::result.resultWave.resize(Global::config.valid_length);
+        Global::result.totalSamplingBuffer = std::vector<double>(
+            static_cast<std::size_t>(Global::config.sampling_length_per_sample) *
+                static_cast<std::size_t>(Global::config.sampling_time),
+            0.0);
+        Global::result.resultWave = std::vector<double>(static_cast<std::size_t>(Global::config.valid_length), 0.0);
     }
-    std::memset(Global::result.totalSamplingBuffer.data(), 0,
-                Global::result.totalSamplingBuffer.size() * sizeof(double));
-    std::memset(Global::result.resultWave.data(), 0, Global::result.resultWave.size() * sizeof(double));
 }
 
 } // namespace Commander

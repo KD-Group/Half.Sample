@@ -1,3 +1,4 @@
+import math
 import time
 import tempfile
 import unittest
@@ -92,31 +93,94 @@ class MyTestCase(unittest.TestCase):
     def test_instant_ai_mock_uses_requested_waveform_count(self):
         sampler.set_sampler(sampler_name="mock_sampler")
         sampler.set_sampler_value("mock_noise", 0)
+        sampler.set_sampler_value("mock_phase_offset", 0.49)
         sampler.measure(
             number_of_waveforms=3,
-            emitting_frequency=0.1,
+            emitting_frequency=0.05,
             instant_ai_frequency_threshold=0.1,
             instant_ai_target_points_per_waveform=100,
+            instant_ai_max_reliable_polling_hz=10,
         )
         while sampler.is_measuring:
             time.sleep(0.01)
         result = sampler.query()
         self.assertTrue(result.success, result.message)
         self.assertEqual(result.acquisition_mode, "instant_ai")
+        self.assertEqual(result.instant_ai_complete_waveforms, 3)
+        self.assertAlmostEqual(result.instant_ai_planned_duration_seconds, 80.0)
+        self.assertAlmostEqual(result.instant_ai_actual_duration_seconds, 80.0)
         self.assertEqual(result.instant_ai_late_reads, 0)
         self.assertEqual(result.instant_ai_interpolated_bins, 0)
         self.assertEqual(len(result.wave), 50)
-        self.assertAlmostEqual(result.wave_interval, 100000.0)
+        self.assertAlmostEqual(result.wave_interval, 200000.0)
 
-    def test_instant_ai_dump_can_be_replayed(self):
+    def test_instant_ai_continuous_mock_handles_waveform_counts_and_phase_offsets(self):
         sampler.set_sampler(sampler_name="mock_sampler")
         sampler.set_sampler_value("mock_noise", 0)
+        sampler.set_sampler_value("mock_missing_bin_count", 0)
+        for waveform_count, phase_offset in ((1, 0.0), (3, 0.23)):
+            with self.subTest(waveform_count=waveform_count, phase_offset=phase_offset):
+                sampler.set_sampler_value("mock_phase_offset", phase_offset)
+                sampler.measure(waveform_count, 0.05, instant_ai_frequency_threshold=0.1)
+                while sampler.is_measuring:
+                    time.sleep(0.01)
+                result = sampler.query()
+                self.assertTrue(result.success, result.message)
+                self.assertEqual(result.instant_ai_complete_waveforms, waveform_count)
+                self.assertAlmostEqual(
+                    result.instant_ai_planned_duration_seconds, (waveform_count + 1) / 0.05
+                )
+                self.assertEqual(len(result.wave), 50)
+                self.assertAlmostEqual(result.wave_interval, 200000.0)
+
+    def test_instant_ai_continuous_mock_interpolates_at_most_two_missing_bins(self):
+        sampler.set_sampler(sampler_name="mock_sampler")
+        sampler.set_sampler_value("mock_noise", 0)
+        sampler.set_sampler_value("mock_phase_offset", 0.49)
+        sampler.set_sampler_value("mock_missing_bin_start", 20)
+        sampler.set_sampler_value("mock_missing_bin_count", 2)
+        sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
+        while sampler.is_measuring:
+            time.sleep(0.01)
+        result = sampler.query()
+        self.assertTrue(result.success, result.message)
+        self.assertGreaterEqual(result.instant_ai_interpolated_bins, 2)
+
+    def test_instant_ai_continuous_mock_reports_stable_coverage_error(self):
+        sampler.set_sampler(sampler_name="mock_sampler")
+        sampler.set_sampler_value("mock_noise", 0)
+        sampler.set_sampler_value("mock_phase_offset", 0.49)
+        sampler.set_sampler_value("mock_missing_bin_start", 20)
+        sampler.set_sampler_value("mock_missing_bin_count", 3)
+        sampler.measure(3, 0.05, instant_ai_frequency_threshold=0.1)
+        while sampler.is_measuring:
+            time.sleep(0.01)
+        result = sampler.query()
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_category, "coverage")
+        self.assertFalse(result.retryable)
+        self.assertFalse(result.cancelled)
+        self.assertEqual(result.instant_ai_complete_waveforms, 0)
+        self.assertEqual(result.wave_interval, 0.0)
+        self.assertEqual(result.wave, [])
+
+    def test_legacy_instant_ai_v1_dump_can_be_replayed(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
             dump_path = Path(directory) / "instant.csv"
-            sampler.dump(str(dump_path), 3, 0.1, instant_ai_frequency_threshold=0.1)
-            while sampler.is_measuring:
-                time.sleep(0.01)
-            self.assertTrue(dump_path.read_text(encoding="utf-8").startswith("#HALF_SAMPLE_INSTANT_AI_V1\n"))
+            rows = [
+                "#HALF_SAMPLE_INSTANT_AI_V1",
+                "emitting_frequency=0.1",
+                "target_points=100",
+                "number_of_waveforms=3",
+                "waveform_index,planned_seconds,actual_seconds,voltage",
+            ]
+            for waveform in range(3):
+                for phase_bin in range(100):
+                    seconds = (phase_bin + 0.5) / 10.0
+                    phase = (phase_bin + 0.5) / 100.0
+                    voltage = 5.0 + (2.5 - 5.0) * math.exp(phase / 0.1 * 1e6 / -100.0) if phase < 0.5 else 0.0
+                    rows.append(f"{waveform},{seconds},{seconds},{voltage}")
+            dump_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
             sampler.process(str(dump_path))
             replay = sampler.query()
             self.assertTrue(replay.success)

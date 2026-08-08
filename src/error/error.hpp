@@ -23,6 +23,7 @@ enum Code {
     INSTANT_AI_SCHEDULE_TIMEOUT,
     INSTANT_AI_ALIGNMENT_FAILED,
     INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT,
+    USER_CANCELLED,
 
     // error of original sampling
     ///************************************************************************
@@ -229,6 +230,8 @@ enum Code {
 };
 
 std::string to_string(Code error_code);
+std::string category(Code error_code);
+bool retryable(Code error_code);
 
 } // namespace Error
 

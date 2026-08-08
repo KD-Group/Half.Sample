@@ -21,6 +21,7 @@ class Result:
         "instant_ai_schedule_timeout": "Instant AI采集超时",
         "instant_ai_alignment_failed": "Instant AI波形对齐失败",
         "instant_ai_waveform_count_insufficient": "Instant AI完整波形数量不足",
+        "user_cancelled": "用户已取消",
 
         # 警告类错误
         "warning_intr_not_available": "中断资源不可用",
@@ -84,6 +85,12 @@ class Result:
         self.valid_length = 0  # 有效的波形点数(仅包含上升沿部分)
         self.number_of_waveforms = 0  # 波形平均次数
         self.acquisition_mode = ""
+        self.error_category = ""
+        self.retryable = False
+        self.cancelled = False
+        self.instant_ai_complete_waveforms = 0
+        self.instant_ai_planned_duration_seconds = 0.0
+        self.instant_ai_actual_duration_seconds = 0.0
         self.instant_ai_late_reads = 0
         self.instant_ai_interpolated_bins = 0
         self.wave = []

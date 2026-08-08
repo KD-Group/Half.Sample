@@ -28,6 +28,8 @@ std::string to_string(Code error_code) {
         return "instant_ai_alignment_failed";
     case INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT:
         return "instant_ai_waveform_count_insufficient";
+    case USER_CANCELLED:
+        return "user_cancelled";
 
     // Warnings (0xA0000000 ~)
     case WarningIntrNotAvailable:
@@ -114,6 +116,61 @@ std::string to_string(Code error_code) {
     // Fallback for unknown codes
     default:
         return "error_not_found";
+    }
+}
+
+std::string category(Code error_code) {
+    switch (error_code) {
+    case SUCCESS:
+        return "";
+    case INVALID_INSTANT_AI_CONFIG:
+        return "config";
+    case INSTANT_AI_COVERAGE_INSUFFICIENT:
+        return "coverage";
+    case USER_CANCELLED:
+        return "cancelled";
+    case INSTANT_AI_SCHEDULE_TIMEOUT:
+        return "schedule";
+    case INSTANT_AI_ALIGNMENT_FAILED:
+    case VOLTAGE_NOT_ENOUGH:
+    case WAVE_NOT_FOUND:
+    case APPROPRIATE_WAVE_NOT_FOUND:
+        return "alignment";
+    case INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT:
+        return "waveform_count";
+    case COMMAND_NOT_FOUND:
+        return "command";
+    case SAMPLER_NOT_FOUND:
+        return "config";
+    case NOW_IN_MEASURING:
+        return "state";
+    case FILE_NOT_FOUND:
+        return "file";
+    default:
+        return "read";
+    }
+}
+
+bool retryable(Code error_code) {
+    switch (error_code) {
+    case SUCCESS:
+    case COMMAND_NOT_FOUND:
+    case SAMPLER_NOT_FOUND:
+    case FILE_NOT_FOUND:
+    case INVALID_INSTANT_AI_CONFIG:
+    case INSTANT_AI_COVERAGE_INSUFFICIENT:
+    case USER_CANCELLED:
+        return false;
+    case NOW_IN_MEASURING:
+    case VOLTAGE_NOT_ENOUGH:
+    case WAVE_NOT_FOUND:
+    case APPROPRIATE_WAVE_NOT_FOUND:
+    case INSTANT_AI_SCHEDULE_TIMEOUT:
+    case INSTANT_AI_ALIGNMENT_FAILED:
+    case INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT:
+        return true;
+    default:
+        return true;
     }
 }
 

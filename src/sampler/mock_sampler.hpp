@@ -23,6 +23,9 @@ class MockSampler : public Sampler {
     double mock_v_inf;         // V
     double mock_noise;         // V
     double mock_is_going_down; // true(1.0) or false(0.0)
+    double mock_phase_offset;
+    int mock_missing_bin_start;
+    int mock_missing_bin_count;
 };
 
 } // namespace Sampler
