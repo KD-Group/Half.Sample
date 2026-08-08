@@ -253,30 +253,17 @@ class HeaderLayoutTest(unittest.TestCase):
         )[0]
         self.assertIn("dump_origin_data(config,result);returntrue;", buffered)
 
-    def test_real_sampler_preserves_failed_read_before_post_read_cancel(self):
+    def test_real_sampler_delegates_to_platform_independent_acquisition_loop(self):
         source = compact_cpp(
             (REPO_ROOT / "src/sampler/real_sampler.cpp").read_text(encoding="utf-8")
         )
-        post_read = source.split("code=controller->ReadAny", 1)[1]
-        failed = post_read.index("if(BioFailed(code))")
-        cancelled = post_read.index("if(result.progress.cancel_requested.load())")
-        self.assertLess(failed, cancelled)
-        failure_path = post_read[failed:cancelled]
-        self.assertIn("std::numeric_limits<double>::quiet_NaN()", failure_path)
+        self.assertIn("classRealInstantPlatform", source)
+        self.assertIn("InstantAi::run_continuous_acquisition", source)
 
-    def test_real_sampler_times_read_completion_and_disposes_before_buffered_dump(self):
+    def test_real_sampler_disposes_before_buffered_dump(self):
         source = compact_cpp(
             (REPO_ROOT / "src/sampler/real_sampler.cpp").read_text(encoding="utf-8")
         )
-        instant = source.split("boolRealSampler::sample_instant", 1)[1]
-        read = instant.index("controller->ReadAny")
-        completed = instant.index("steady_clock::now()", read)
-        actual = instant.index("evaluate_read_timing", completed)
-        deadline = instant.index("timing.timed_out", actual)
-        self.assertLess(read, completed)
-        self.assertLess(completed, actual)
-        self.assertLess(actual, deadline)
-
         buffered = source.split("boolRealSampler::sample_buffered", 1)[1].split(
             "boolRealSampler::sample_instant", 1
         )[0]

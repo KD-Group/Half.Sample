@@ -39,7 +39,8 @@ void test_sampling_progress() {
 
     const Sampler::InstantAi::ReadTiming slow =
         Sampler::InstantAi::evaluate_read_timing(0.5, 0.51, 1.6, 0.4, 1.5);
-    assert(slow.actual_seconds == 1.6);
+    assert(slow.actual_seconds == 0.51);
+    assert(slow.completed_seconds == 1.6);
     assert(!slow.late);
     assert(slow.timed_out);
     const Sampler::InstantAi::ReadTiming late =

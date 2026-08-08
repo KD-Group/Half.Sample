@@ -31,6 +31,8 @@ add_executable(sample sample.cpp
         sampler/mock_sampler.cpp
         sampler/instant_ai.hpp
         sampler/instant_ai.cpp
+        sampler/instant_acquisition.hpp
+        sampler/instant_acquisition.cpp
         sampler/real_sampler.hpp
         sampler/sampler.hpp
         sampler/sampler_factory.hpp
@@ -51,11 +53,13 @@ add_executable(sample_instant_ai_unit_tests
         ../tests/sample_instant_ai/test_reconstruction.cpp
         ../tests/sample_instant_ai/test_progress.cpp
         ../tests/sample_instant_ai/test_controller_owner.cpp
+        ../tests/sample_instant_ai/test_instant_acquisition.cpp
         ../tests/sample_instant_ai/test_mock_sampler.cpp
         config/sampling_config.cpp
         commander/base.cpp
         error/error.cpp
         sampler/instant_ai.cpp
+        sampler/instant_acquisition.cpp
         sampler/mock_sampler.cpp
 )
 target_link_libraries(sample_instant_ai_unit_tests Eigen3::Eigen)

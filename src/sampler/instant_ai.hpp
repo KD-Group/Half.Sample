@@ -2,21 +2,24 @@
 #define INSTANT_AI_HPP
 
 #include <vector>
+#include <cmath>
+#include <limits>
 
 namespace Sampler {
 namespace InstantAi {
 
 struct TimedReading {
     double planned_seconds;
-    double actual_seconds;
+    double actual_seconds;    // ReadAny start; used for phase, ordering, and lateness.
     double voltage;
     bool read_success;
     int read_error_code;
+    double completed_seconds; // ReadAny completion; used for timeout and acquisition duration.
 
     TimedReading(double planned = 0.0, double actual = 0.0, double value = 0.0, bool succeeded = true,
-                 int error_code = 0)
+                 int error_code = 0, double completed = std::numeric_limits<double>::quiet_NaN())
         : planned_seconds(planned), actual_seconds(actual), voltage(value), read_success(succeeded),
-          read_error_code(error_code) {}
+          read_error_code(error_code), completed_seconds(std::isfinite(completed) ? completed : actual) {}
 };
 
 using TimedWaveform = std::vector<TimedReading>;
@@ -35,6 +38,7 @@ struct ContinuousSchedule {
 
 struct ReadTiming {
     double actual_seconds = 0.0;
+    double completed_seconds = 0.0;
     bool late = false;
     bool timed_out = false;
 };

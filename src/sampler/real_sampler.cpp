@@ -1,6 +1,7 @@
 #define NOMINMAX
 #include "real_sampler.hpp"
 #include "controller_owner.hpp"
+#include "instant_acquisition.hpp"
 
 #include "Windows.h"
 #include "../daq_headers/legacy/bdaqctrl.h"
@@ -16,28 +17,35 @@ using namespace Automation::BDaq;
 namespace {
 const wchar_t* const device_description = L"PCI-1714,BID#0";
 
-class CycleTracker {
+class RealInstantPlatform : public Sampler::InstantAi::InstantAcquisitionPlatform {
   public:
-    explicit CycleTracker(int target) : target_(target) {}
-    int observe(double value) {
-        minimum_ = std::min(minimum_, value);
-        maximum_ = std::max(maximum_, value);
-        const double span = maximum_ - minimum_;
-        if (span < Constant::MinVoltageAmplitude) return cycles_;
-        const double low = minimum_ + span * Constant::LowerBound;
-        const double high = minimum_ + span * Constant::UpperBound;
-        if (value <= low) armed_ = true;
-        else if (armed_ && value >= high) {
-            armed_ = false;
-            cycles_ = std::min(target_, cycles_ + 1);
+    RealInstantPlatform(InstantAiCtrl* controller, Result::SamplingResult& result)
+        : controller_(controller), result_(result), origin_(std::chrono::steady_clock::now()) {}
+
+    bool wait_until(double planned_seconds) override {
+        const auto target = origin_ + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(planned_seconds));
+        while (std::chrono::steady_clock::now() < target) {
+            if (result_.progress.cancel_requested.load(std::memory_order_acquire)) return false;
+            const auto chunk = std::chrono::steady_clock::now() + std::chrono::milliseconds(25);
+            result_.progress.wait_until_or_cancel(std::min(target, chunk));
+            result_.progress.update_elapsed(now_seconds());
         }
-        return cycles_;
+        return !result_.progress.cancel_requested.load(std::memory_order_acquire);
     }
+    double now_seconds() override {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - origin_).count();
+    }
+    int read(double& voltage) override {
+        // The vendor's synchronous ReadAny call has no cancellation API.
+        return static_cast<int>(controller_->ReadAny(0, 1, nullptr, &voltage));
+    }
+    bool read_failed(int code) const override { return BioFailed(static_cast<ErrorCode>(code)); }
+
   private:
-    int target_, cycles_ = 0;
-    bool armed_ = false;
-    double minimum_ = std::numeric_limits<double>::infinity();
-    double maximum_ = -std::numeric_limits<double>::infinity();
+    InstantAiCtrl* controller_;
+    Result::SamplingResult& result_;
+    std::chrono::steady_clock::time_point origin_;
 };
 }
 
@@ -96,67 +104,9 @@ bool RealSampler::sample_instant(const Config::SamplingConfig& config, Result::S
     const InstantAi::ContinuousSchedule schedule = InstantAi::build_continuous_schedule(
         config.emitting_frequency, config.number_of_waveforms,
         config.instant_ai_target_points_per_waveform, config.instant_ai_max_reliable_polling_hz);
-    result.instant_ai_waveforms.clear();
-    result.instant_ai_readings.clear();
-    result.instant_ai_format_version = 2;
-    result.instant_ai_readings.reserve(schedule.planned_seconds.size());
-    const auto origin = std::chrono::steady_clock::now();
-    const double deadline = schedule.duration_seconds + std::max(1.0, schedule.duration_seconds * 0.1);
-    CycleTracker cycles(config.number_of_waveforms + 1);
-    double previous_planned = 0.0;
-    const auto finish = [&]() {
-        const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - origin).count();
-        result.instant_ai_actual_duration_seconds = elapsed;
-        result.progress.update_elapsed(elapsed);
-    };
-    for (double planned : schedule.planned_seconds) {
-        const auto target = origin + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<double>(planned));
-        while (std::chrono::steady_clock::now() < target) {
-            if (result.progress.cancel_requested.load()) {
-                result.error_code = Error::USER_CANCELLED; result.cancelled = true; finish(); return false;
-            }
-            const auto chunk = std::chrono::steady_clock::now() + std::chrono::milliseconds(25);
-            result.progress.wait_until_or_cancel(std::min(target, chunk));
-            const double waited =
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - origin).count();
-            result.progress.update_elapsed(waited);
-        }
-        if (result.progress.cancel_requested.load()) {
-            result.error_code = Error::USER_CANCELLED; result.cancelled = true; finish(); return false;
-        }
-        const auto started = std::chrono::steady_clock::now();
-        const double started_seconds = std::chrono::duration<double>(started - origin).count();
-        double voltage = std::numeric_limits<double>::quiet_NaN();
-        // The vendor's synchronous ReadAny call has no cancellation API. Cancellation is observed immediately after it.
-        code = controller->ReadAny(0, 1, nullptr, &voltage);
-        const auto completed = std::chrono::steady_clock::now();
-        const double completed_seconds = std::chrono::duration<double>(completed - origin).count();
-        const InstantAi::ReadTiming timing = InstantAi::evaluate_read_timing(
-            planned, started_seconds, completed_seconds, previous_planned, deadline);
-        const double actual = timing.actual_seconds;
-        result.progress.update_elapsed(actual);
-        if (timing.late) {
-            result.progress.late_reads.fetch_add(1);
-            result.instant_ai_late_reads++;
-        }
-        previous_planned = planned;
-        if (BioFailed(code)) {
-            result.instant_ai_readings.push_back({planned, actual, std::numeric_limits<double>::quiet_NaN(), false,
-                                                  static_cast<int>(code)});
-            result.error_code = static_cast<Error::Code>(code); finish(); return false;
-        }
-        if (result.progress.cancel_requested.load()) {
-            result.error_code = Error::USER_CANCELLED; result.cancelled = true; finish(); return false;
-        }
-        result.instant_ai_readings.push_back({planned, actual, voltage, true, 0});
-        result.progress.successful_reads.fetch_add(1);
-        result.progress.completed_cycles.store(cycles.observe(voltage));
-        if (timing.timed_out) {
-            result.error_code = Error::INSTANT_AI_SCHEDULE_TIMEOUT; finish(); return false;
-        }
-    }
-    finish();
+    RealInstantPlatform platform(controller.get(), result);
+    if (!InstantAi::run_continuous_acquisition(schedule, config.number_of_waveforms + 1, platform, result))
+        return false;
     return dump_origin_data(config, result);
 }
 } // namespace Sampler
