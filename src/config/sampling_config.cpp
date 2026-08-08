@@ -3,6 +3,7 @@
 #include "../constant.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 
 namespace Config {
@@ -21,25 +22,38 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
         return false;
     }
 
+    const AcquisitionMode requested_mode =
+        instant_threshold > 0 && frequency <= instant_threshold ? AcquisitionMode::Instant : AcquisitionMode::Buffered;
+    double instant_polling_frequency = 0.0;
+    double instant_planned_duration_seconds = 0.0;
+    std::size_t instant_planned_readings = 0;
+
+    if (requested_mode == AcquisitionMode::Instant) {
+        instant_polling_frequency = std::min(frequency * instant_target_points, instant_max_reliable_polling_hz);
+        instant_planned_duration_seconds = (waveforms + 1.0) / frequency;
+        const double instant_sampling_interval = 1e6 / instant_polling_frequency;
+        const double unrounded_reading_count = instant_planned_duration_seconds * instant_polling_frequency;
+        const double rounded_reading_count = std::round(unrounded_reading_count) + 1.0;
+        if (!std::isfinite(instant_polling_frequency) || instant_polling_frequency <= 0 ||
+            !std::isfinite(instant_planned_duration_seconds) || instant_planned_duration_seconds <= 0 ||
+            !std::isfinite(instant_sampling_interval) || instant_sampling_interval <= 0 ||
+            !std::isfinite(rounded_reading_count) || rounded_reading_count < 1 || rounded_reading_count > INT_MAX) {
+            return false;
+        }
+        instant_planned_readings = static_cast<std::size_t>(std::llround(unrounded_reading_count)) + 1;
+    }
+
     number_of_waveforms = waveforms;
     emitting_frequency = frequency;
     instant_ai_frequency_threshold = instant_threshold;
     instant_ai_target_points_per_waveform = instant_target_points;
     instant_ai_max_reliable_polling_hz = instant_max_reliable_polling_hz;
-    instant_ai_polling_frequency = 0.0;
-    instant_ai_planned_duration_seconds = 0.0;
-    instant_ai_planned_readings = 0;
-    acquisition_mode =
-        instant_threshold > 0 && frequency <= instant_threshold ? AcquisitionMode::Instant : AcquisitionMode::Buffered;
+    instant_ai_polling_frequency = instant_polling_frequency;
+    instant_ai_planned_duration_seconds = instant_planned_duration_seconds;
+    instant_ai_planned_readings = instant_planned_readings;
+    acquisition_mode = requested_mode;
 
     if (is_instant()) {
-        instant_ai_polling_frequency =
-            std::min(frequency * instant_target_points, instant_max_reliable_polling_hz);
-        instant_ai_planned_duration_seconds = (number_of_waveforms + 1.0) / frequency;
-        instant_ai_planned_readings = static_cast<std::size_t>(
-                                          std::llround(instant_ai_planned_duration_seconds *
-                                                       instant_ai_polling_frequency)) +
-                                      1;
         sampling_frequency = instant_ai_polling_frequency;
         sampling_interval = 1e6 / sampling_frequency;
         waveform_length = instant_target_points;

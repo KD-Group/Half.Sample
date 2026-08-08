@@ -50,6 +50,24 @@ class MyTestCase(unittest.TestCase):
         with self.assertRaisesRegex(Sampler.Error, "invalid_instant_ai_config"):
             sampler.communicate("to_measure 3 0.05 False 0.1 100 10 extra")
 
+    def test_config_rejects_malformed_or_extra_instant_ai_options(self):
+        with self.assertRaisesRegex(Sampler.Error, "invalid_instant_ai_config"):
+            sampler.communicate("to_config 3 0.05 False 0.1 invalid")
+        with self.assertRaisesRegex(Sampler.Error, "invalid_instant_ai_config"):
+            sampler.communicate("to_config 3 0.05 False 0.1 100 invalid")
+        with self.assertRaisesRegex(Sampler.Error, "invalid_instant_ai_config"):
+            sampler.communicate("to_config 3 0.05 False 0.1 100 10 extra")
+
+    def test_legacy_two_option_measure_protocol_defaults_max_polling(self):
+        sampler.set_sampler(sampler_name="mock_sampler")
+        sampler.set_sampler_value("mock_noise", 0)
+        sampler.communicate("to_measure 1 0.1 False 0.1 100")
+        while sampler.is_measuring:
+            time.sleep(0.01)
+        result = sampler.query()
+        self.assertTrue(result.success, result.message)
+        self.assertEqual(result.acquisition_mode, "instant_ai")
+
     def test_simple_measure(self):
         sampler.set_sampler(sampler_name="mock_sampler")
 

@@ -14,6 +14,43 @@
 #include <chrono>
 #endif
 
+namespace {
+
+struct InstantOptions {
+    double threshold = 0.0;
+    int target_points = 100;
+    double max_reliable_polling_hz = 10.0;
+};
+
+bool parse_instant_options(const std::string& line_tail, InstantOptions& instant_options) {
+    std::istringstream options(line_tail);
+    options >> std::ws;
+    if (options.eof()) {
+        return true;
+    }
+    if (!(options >> instant_options.threshold)) {
+        return false;
+    }
+    options >> std::ws;
+    if (options.eof()) {
+        return true;
+    }
+    if (!(options >> instant_options.target_points)) {
+        return false;
+    }
+    options >> std::ws;
+    if (options.eof()) {
+        return true;
+    }
+    if (!(options >> instant_options.max_reliable_polling_hz)) {
+        return false;
+    }
+    options >> std::ws;
+    return options.eof();
+}
+
+} // namespace
+
 namespace Commander {
 void measure() {
     bool& success = Global::result.success;
@@ -58,38 +95,15 @@ void async_measure() {
     std::cin >> mode;
     std::string line_tail;
     std::getline(std::cin, line_tail);
-    double instant_threshold = 0.0;
-    int instant_target_points = 100;
-    double instant_max_reliable_polling_hz = 10.0;
-    if (!line_tail.empty()) {
-        std::istringstream options(line_tail);
-        options >> std::ws;
-        if (!options.eof()) {
-            if (!(options >> instant_threshold)) {
-                Base::error(Error::INVALID_INSTANT_AI_CONFIG);
-                return;
-            }
-            options >> std::ws;
-            if (!options.eof() && !(options >> instant_target_points)) {
-                Base::error(Error::INVALID_INSTANT_AI_CONFIG);
-                return;
-            }
-            options >> std::ws;
-            if (!options.eof() && !(options >> instant_max_reliable_polling_hz)) {
-                Base::error(Error::INVALID_INSTANT_AI_CONFIG);
-                return;
-            }
-            options >> std::ws;
-            if (!options.eof()) {
-                Base::error(Error::INVALID_INSTANT_AI_CONFIG);
-                return;
-            }
-        }
+    InstantOptions instant_options;
+    if (!parse_instant_options(line_tail, instant_options)) {
+        Base::error(Error::INVALID_INSTANT_AI_CONFIG);
+        return;
     }
 
     Global::config.auto_mode = (mode == "True");
-    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_threshold, instant_target_points,
-                               instant_max_reliable_polling_hz)) {
+    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_options.threshold,
+                               instant_options.target_points, instant_options.max_reliable_polling_hz)) {
         Base::error(Error::INVALID_INSTANT_AI_CONFIG);
         return;
     }
@@ -179,21 +193,15 @@ void to_config() {
     std::cin >> mode;
     std::string line_tail;
     std::getline(std::cin, line_tail);
-    double instant_threshold = 0.0;
-    int instant_target_points = 100;
-    double instant_max_reliable_polling_hz = 10.0;
-    std::istringstream options(line_tail);
-    if (!(options >> instant_threshold)) {
-        instant_threshold = 0.0;
-    } else if (!(options >> instant_target_points)) {
-        instant_target_points = 100;
-    } else if (!(options >> instant_max_reliable_polling_hz)) {
-        instant_max_reliable_polling_hz = 10.0;
+    InstantOptions instant_options;
+    if (!parse_instant_options(line_tail, instant_options)) {
+        Base::error(Error::INVALID_INSTANT_AI_CONFIG);
+        return;
     }
 
     Global::config.auto_mode = (mode == "True");
-    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_threshold, instant_target_points,
-                               instant_max_reliable_polling_hz)) {
+    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_options.threshold,
+                               instant_options.target_points, instant_options.max_reliable_polling_hz)) {
         Base::error(Error::INVALID_INSTANT_AI_CONFIG);
     }
 }

@@ -2,7 +2,9 @@
 #include "../../src/constant.hpp"
 
 #include <cassert>
+#include <climits>
 #include <cmath>
+#include <limits>
 
 void test_sampling_config() {
     Config::SamplingConfig config;
@@ -37,4 +39,34 @@ void test_sampling_config() {
 
     assert(config.update(1, 0.5, 0.0, 100, 10.0));
     assert(config.acquisition_mode == Config::AcquisitionMode::Buffered);
+
+    assert(!config.update(1, 0.05, 0.1, 100, 0.0));
+    assert(!config.update(1, 0.05, 0.1, 100, -1.0));
+    assert(!config.update(1, 0.05, 0.1, 100, std::numeric_limits<double>::quiet_NaN()));
+    assert(!config.update(1, 0.05, 0.1, 100, std::numeric_limits<double>::infinity()));
+
+    assert(config.update(3, 0.05, 0.1, 100, 10.0));
+    const Config::SamplingConfig valid_config = config;
+    const auto assert_previous_config_preserved = [&]() {
+        assert(config.acquisition_mode == valid_config.acquisition_mode);
+        assert(config.number_of_waveforms == valid_config.number_of_waveforms);
+        assert(config.emitting_frequency == valid_config.emitting_frequency);
+        assert(config.instant_ai_frequency_threshold == valid_config.instant_ai_frequency_threshold);
+        assert(config.instant_ai_target_points_per_waveform == valid_config.instant_ai_target_points_per_waveform);
+        assert(config.instant_ai_max_reliable_polling_hz == valid_config.instant_ai_max_reliable_polling_hz);
+        assert(config.instant_ai_polling_frequency == valid_config.instant_ai_polling_frequency);
+        assert(config.instant_ai_planned_duration_seconds == valid_config.instant_ai_planned_duration_seconds);
+        assert(config.instant_ai_planned_readings == valid_config.instant_ai_planned_readings);
+        assert(config.sampling_frequency == valid_config.sampling_frequency);
+        assert(config.sampling_interval == valid_config.sampling_interval);
+        assert(config.sampling_length_per_sample == valid_config.sampling_length_per_sample);
+        assert(config.waveform_length == valid_config.waveform_length);
+        assert(config.valid_length == valid_config.valid_length);
+        assert(config.sampling_time == valid_config.sampling_time);
+    };
+
+    assert(!config.update(1, std::numeric_limits<double>::denorm_min(), 0.1, 100, 10.0));
+    assert_previous_config_preserved();
+    assert(!config.update(INT_MAX, 0.05, 0.1, 100, 10.0));
+    assert_previous_config_preserved();
 }
