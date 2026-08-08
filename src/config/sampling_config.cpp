@@ -42,6 +42,10 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
             return false;
         }
         instant_planned_readings = static_cast<std::size_t>(std::llround(unrounded_reading_count)) + 1;
+        const std::size_t reconstruction_rows = static_cast<std::size_t>(waveforms) + 1;
+        if (reconstruction_rows > Constant::MaxInstantAiReconstructionCells / instant_planned_readings) {
+            return false;
+        }
     }
 
     number_of_waveforms = waveforms;

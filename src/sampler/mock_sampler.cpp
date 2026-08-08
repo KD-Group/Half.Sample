@@ -143,6 +143,9 @@ bool MockSampler::set_value(const std::string& key, const double value) {
     } else if (key == "mock_is_going_down") {
         mock_is_going_down = value;
     } else if (key == "mock_phase_offset") {
+        if (!std::isfinite(value)) {
+            return false;
+        }
         mock_phase_offset = value - std::floor(value);
     } else if (key == "mock_missing_bin_start") {
         if (!std::isfinite(value) || std::floor(value) != value ||

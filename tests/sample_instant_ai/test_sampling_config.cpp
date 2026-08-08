@@ -71,4 +71,29 @@ void test_sampling_config() {
     assert_previous_config_preserved();
     assert(!config.update(160000, 0.1, 0.1, 100, 10.0));
     assert_previous_config_preserved();
+
+    int largest_reconstruction_waveforms = 0;
+    for (int waveforms = 1;; ++waveforms) {
+        const std::size_t cycles = static_cast<std::size_t>(waveforms) + 1;
+        const std::size_t planned = cycles * 100 + 1;
+        if (cycles > Constant::MaxInstantAiReconstructionCells / planned) {
+            break;
+        }
+        largest_reconstruction_waveforms = waveforms;
+    }
+    assert(largest_reconstruction_waveforms == 198);
+    assert(config.update(largest_reconstruction_waveforms, 0.1, 0.1, 100, 10.0));
+    const Config::SamplingConfig reconstruction_boundary_config = config;
+    assert(!config.update(largest_reconstruction_waveforms + 1, 0.1, 0.1, 100, 10.0));
+    assert(config.number_of_waveforms == reconstruction_boundary_config.number_of_waveforms);
+    assert(config.instant_ai_planned_readings == reconstruction_boundary_config.instant_ai_planned_readings);
+
+    const std::size_t largest_raw_boundary_points =
+        (static_cast<std::size_t>(Constant::MaxSamplingPoints) - 1) / 2;
+    const std::size_t largest_raw_planned_readings = largest_raw_boundary_points * 2 + 1;
+    const std::size_t first_rejected_raw_planned_readings = (largest_raw_boundary_points + 1) * 2 + 1;
+    assert(largest_raw_planned_readings <= static_cast<std::size_t>(Constant::MaxSamplingPoints));
+    assert(first_rejected_raw_planned_readings > static_cast<std::size_t>(Constant::MaxSamplingPoints));
+    assert(!config.update(1, 0.000001, 0.000001, static_cast<int>(largest_raw_boundary_points), 10.0));
+    assert(!config.update(1, 0.000001, 0.000001, static_cast<int>(largest_raw_boundary_points + 1), 10.0));
 }

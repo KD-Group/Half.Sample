@@ -34,10 +34,12 @@ sample_instant_ai_test_sources = [
     'tests/sample_instant_ai/test_sampling_config.cpp',
     'tests/sample_instant_ai/test_phase_schedule.cpp',
     'tests/sample_instant_ai/test_reconstruction.cpp',
+    'tests/sample_instant_ai/test_mock_sampler.cpp',
     'src/config/sampling_config.cpp',
     'src/commander/base.cpp',
     'src/error/error.cpp',
     'src/sampler/instant_ai.cpp',
+    'src/sampler/mock_sampler.cpp',
 ]
 sample_instant_ai_test = env.Program(
     'cpp_build/sample_instant_ai_unit_tests.exe',

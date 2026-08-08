@@ -1,11 +1,16 @@
 #ifndef CONSTANT_HPP
 #define CONSTANT_HPP
 
+#include <cstddef>
+
 namespace Constant {
 const int MaxSamplingFrequency = int(2e7); // Hz
 const int MinSamplingFrequency = int(1e6); // Hz
 const int HighSpeedSamplingThreshold = 10; // Hz
 const int MaxSamplingPoints = int(16e6);
+// Worst-case continuous reconstruction DP cells. Each cell stores one double cost and one int successor,
+// so four million cells use roughly 48 MB before vector overhead.
+const std::size_t MaxInstantAiReconstructionCells = 4u * 1000u * 1000u;
 
 const double HighSpeedEstimatedFrequencyUpperBound = 20480; // Hz
 const double LowSpeedEstimatedFrequencyUpperBound = 8;      // Hz
