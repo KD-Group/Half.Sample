@@ -12,12 +12,43 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(client.measure(3, 0.1), "to_measure 3 0.1 False")
         self.assertEqual(
             client.measure(3, 0.1, instant_ai_frequency_threshold=0.5),
-            "to_measure 3 0.1 False 0.5 100",
+            "to_measure 3 0.1 False 0.5 100 10",
+        )
+        self.assertEqual(
+            client.measure(
+                3,
+                0.05,
+                instant_ai_frequency_threshold=0.1,
+                instant_ai_target_points_per_waveform=100,
+                instant_ai_max_reliable_polling_hz=10.0,
+            ),
+            "to_measure 3 0.05 False 0.1 100 10",
+        )
+        self.assertEqual(
+            client.dump("capture.csv", 3, 0.05),
+            "to_dump capture.csv 3 0.05 False",
+        )
+        self.assertEqual(
+            client.dump(
+                "capture.csv",
+                3,
+                0.05,
+                instant_ai_frequency_threshold=0.1,
+                instant_ai_target_points_per_waveform=100,
+                instant_ai_max_reliable_polling_hz=9.5,
+            ),
+            "to_dump capture.csv 3 0.05 False 0.1 100 9.5",
         )
 
     def test_is_measuring(self):
         result = sampler.communicate("is_measuring")
         self.assertEqual(result.measuring, False)
+
+    def test_measure_rejects_malformed_or_extra_instant_ai_options(self):
+        with self.assertRaisesRegex(Sampler.Error, "invalid_instant_ai_config"):
+            sampler.communicate("to_measure 3 0.05 False invalid 100 10")
+        with self.assertRaisesRegex(Sampler.Error, "invalid_instant_ai_config"):
+            sampler.communicate("to_measure 3 0.05 False 0.1 100 10 extra")
 
     def test_simple_measure(self):
         sampler.set_sampler(sampler_name="mock_sampler")
@@ -46,7 +77,7 @@ class MyTestCase(unittest.TestCase):
         sampler.measure(
             number_of_waveforms=3,
             emitting_frequency=0.1,
-            instant_ai_frequency_threshold=0.5,
+            instant_ai_frequency_threshold=0.1,
             instant_ai_target_points_per_waveform=100,
         )
         while sampler.is_measuring:
@@ -64,7 +95,7 @@ class MyTestCase(unittest.TestCase):
         sampler.set_sampler_value("mock_noise", 0)
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
             dump_path = Path(directory) / "instant.csv"
-            sampler.dump(str(dump_path), 3, 0.1, instant_ai_frequency_threshold=0.5)
+            sampler.dump(str(dump_path), 3, 0.1, instant_ai_frequency_threshold=0.1)
             while sampler.is_measuring:
                 time.sleep(0.01)
             self.assertTrue(dump_path.read_text(encoding="utf-8").startswith("#HALF_SAMPLE_INSTANT_AI_V1\n"))

@@ -7,8 +7,17 @@
 
 namespace Config {
 
-bool SamplingConfig::update(int waveforms, double frequency, double instant_threshold, int instant_target_points) {
+bool SamplingConfig::update(int waveforms, double frequency, double instant_threshold, int instant_target_points,
+                            double instant_max_reliable_polling_hz) {
     if (waveforms <= 0 || frequency <= 0 || instant_threshold < 0) {
+        return false;
+    }
+
+    if (instant_threshold > 0 &&
+        (instant_target_points < 20 || !std::isfinite(instant_max_reliable_polling_hz) ||
+         instant_max_reliable_polling_hz <= 0 ||
+         instant_threshold * instant_target_points >
+             instant_max_reliable_polling_hz + 1e-12)) {
         return false;
     }
 
@@ -16,18 +25,26 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
     emitting_frequency = frequency;
     instant_ai_frequency_threshold = instant_threshold;
     instant_ai_target_points_per_waveform = instant_target_points;
+    instant_ai_max_reliable_polling_hz = instant_max_reliable_polling_hz;
+    instant_ai_polling_frequency = 0.0;
+    instant_ai_planned_duration_seconds = 0.0;
+    instant_ai_planned_readings = 0;
     acquisition_mode =
         instant_threshold > 0 && frequency <= instant_threshold ? AcquisitionMode::Instant : AcquisitionMode::Buffered;
 
     if (is_instant()) {
-        if (instant_target_points < 20) {
-            return false;
-        }
-        sampling_frequency = frequency * instant_target_points;
+        instant_ai_polling_frequency =
+            std::min(frequency * instant_target_points, instant_max_reliable_polling_hz);
+        instant_ai_planned_duration_seconds = (number_of_waveforms + 1.0) / frequency;
+        instant_ai_planned_readings = static_cast<std::size_t>(
+                                          std::llround(instant_ai_planned_duration_seconds *
+                                                       instant_ai_polling_frequency)) +
+                                      1;
+        sampling_frequency = instant_ai_polling_frequency;
         sampling_interval = 1e6 / sampling_frequency;
         waveform_length = instant_target_points;
         valid_length = waveform_length / 2;
-        sampling_length_per_sample = waveform_length * number_of_waveforms;
+        sampling_length_per_sample = static_cast<int>(instant_ai_planned_readings);
         waveforms_per_sample = 1.0;
         sampling_time = 1;
         Commander::Base::variable(number_of_waveforms);

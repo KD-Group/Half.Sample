@@ -60,6 +60,7 @@ void async_measure() {
     std::getline(std::cin, line_tail);
     double instant_threshold = 0.0;
     int instant_target_points = 100;
+    double instant_max_reliable_polling_hz = 10.0;
     if (!line_tail.empty()) {
         std::istringstream options(line_tail);
         options >> std::ws;
@@ -74,6 +75,11 @@ void async_measure() {
                 return;
             }
             options >> std::ws;
+            if (!options.eof() && !(options >> instant_max_reliable_polling_hz)) {
+                Base::error(Error::INVALID_INSTANT_AI_CONFIG);
+                return;
+            }
+            options >> std::ws;
             if (!options.eof()) {
                 Base::error(Error::INVALID_INSTANT_AI_CONFIG);
                 return;
@@ -82,7 +88,8 @@ void async_measure() {
     }
 
     Global::config.auto_mode = (mode == "True");
-    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_threshold, instant_target_points)) {
+    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_threshold, instant_target_points,
+                               instant_max_reliable_polling_hz)) {
         Base::error(Error::INVALID_INSTANT_AI_CONFIG);
         return;
     }
@@ -174,15 +181,19 @@ void to_config() {
     std::getline(std::cin, line_tail);
     double instant_threshold = 0.0;
     int instant_target_points = 100;
+    double instant_max_reliable_polling_hz = 10.0;
     std::istringstream options(line_tail);
     if (!(options >> instant_threshold)) {
         instant_threshold = 0.0;
     } else if (!(options >> instant_target_points)) {
         instant_target_points = 100;
+    } else if (!(options >> instant_max_reliable_polling_hz)) {
+        instant_max_reliable_polling_hz = 10.0;
     }
 
     Global::config.auto_mode = (mode == "True");
-    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_threshold, instant_target_points)) {
+    if (!Global::config.update(number_of_waveforms, emitting_frequency, instant_threshold, instant_target_points,
+                               instant_max_reliable_polling_hz)) {
         Base::error(Error::INVALID_INSTANT_AI_CONFIG);
     }
 }

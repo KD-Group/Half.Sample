@@ -1,6 +1,7 @@
 #ifndef sampling_config_HPP
 #define sampling_config_HPP
 
+#include <cstddef>
 #include <string>
 
 namespace Config {
@@ -14,6 +15,10 @@ struct SamplingConfig {
     AcquisitionMode acquisition_mode = AcquisitionMode::Buffered;
     double instant_ai_frequency_threshold = 0.0;
     int instant_ai_target_points_per_waveform = 100;
+    double instant_ai_max_reliable_polling_hz = 10.0;
+    double instant_ai_polling_frequency = 0.0;
+    double instant_ai_planned_duration_seconds = 0.0;
+    std::size_t instant_ai_planned_readings = 0;
     double instant_ai_min_read_interval_seconds = 0.1;
 
     double sampling_frequency; // Hz
@@ -31,7 +36,8 @@ struct SamplingConfig {
 
     std::string dump_file_path;
 
-    bool update(int waveforms, double frequency, double instant_threshold = 0.0, int instant_target_points = 100);
+    bool update(int waveforms, double frequency, double instant_threshold = 0.0, int instant_target_points = 100,
+                double instant_max_reliable_polling_hz = 10.0);
 
     bool is_instant() const { return acquisition_mode == AcquisitionMode::Instant; }
 };
