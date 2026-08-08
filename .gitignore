@@ -40,7 +40,6 @@ __pycache__/
 .idea/
 .ipynb_checkpoints/
 .pytest_cache/
-.worktrees/
 
 # deploy
 sample_kd.egg-info
