@@ -1,10 +1,201 @@
+import importlib
 import math
+import os
 import sys
 import time
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from sample import Result, Sampler, sampler
+
+
+sample_module = importlib.import_module("sample.sample")
+
+
+class DriverDiscoveryTest(unittest.TestCase):
+    def test_execution_path_does_not_build_when_cwd_driver_exists(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            for candidate_dir in (cwd, source_root / "sample"):
+                candidate_dir.mkdir(parents=True)
+            cwd_driver = cwd / "sample.exe"
+            cwd_driver.touch()
+            (source_root / "SConstruct").touch()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module.os, "system", return_value=1) as system:
+                    self.assertEqual(Path(Sampler().execution_path).resolve(), cwd_driver.resolve())
+                    system.assert_not_called()
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_execution_path_preserves_exact_candidate_priority(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            executable_dir = root / "python"
+            prefix = root / "venv"
+            path_dir = root / "path"
+            for candidate_dir in (cwd, source_root / "sample", source_root / "cpp_build",
+                                  executable_dir, prefix, path_dir):
+                candidate_dir.mkdir(parents=True)
+            candidates = [
+                cwd / "sample.exe",
+                source_root / "cpp_build" / "sample.exe",
+                executable_dir / "sample.exe",
+                prefix / "sample.exe",
+                path_dir / "sample.exe",
+            ]
+            for candidate in candidates:
+                candidate.touch()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(prefix)), \
+                        mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True), \
+                        mock.patch.object(sample_module.os, "system") as system:
+                    expected_cwd = Path.cwd()
+                    expected_path = os.environ["PATH"]
+                    for expected in candidates:
+                        self.assertEqual(Path(Sampler().execution_path).resolve(), expected.resolve())
+                        self.assertEqual(Path.cwd(), expected_cwd)
+                        self.assertEqual(os.environ["PATH"], expected_path)
+                        expected.unlink()
+                    system.assert_not_called()
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_execution_path_uses_sys_prefix_before_path(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            executable_dir = root / "python"
+            prefix = root / "venv"
+            path_dir = root / "path"
+            for candidate_dir in (cwd, source_root / "sample", executable_dir, prefix, path_dir):
+                candidate_dir.mkdir(parents=True)
+            prefix_driver = prefix / "sample.exe"
+            prefix_driver.touch()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(prefix)), \
+                        mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True):
+                    self.assertEqual(Sampler().execution_path, str(prefix_driver.resolve()))
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_execution_path_uses_executable_sibling_before_prefix_and_path(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            executable_dir = root / "python"
+            prefix = root / "venv"
+            path_dir = root / "path"
+            for candidate_dir in (cwd, source_root / "sample", executable_dir, prefix, path_dir):
+                candidate_dir.mkdir(parents=True)
+            executable_driver = executable_dir / "sample.exe"
+            executable_driver.touch()
+            (prefix / "sample.exe").touch()
+            (path_dir / "sample.exe").touch()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(prefix)), \
+                        mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True):
+                    self.assertEqual(Sampler().execution_path, str(executable_driver.resolve()))
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_execution_path_ignores_directory_candidates(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            executable_dir = root / "python"
+            prefix = root / "venv"
+            path_dir = root / "path"
+            for candidate_dir in (cwd, source_root / "sample", source_root / "cpp_build",
+                                  executable_dir, prefix, path_dir):
+                candidate_dir.mkdir(parents=True)
+            (cwd / "sample.exe").mkdir()
+            source_driver = source_root / "cpp_build" / "sample.exe"
+            source_driver.touch()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(prefix)), \
+                        mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True):
+                    self.assertEqual(Path(Sampler().execution_path).resolve(), source_driver.resolve())
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_execution_path_rejects_path_directory_with_stable_error(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            executable_dir = root / "python"
+            prefix = root / "venv"
+            path_driver = root / "path" / "sample.exe"
+            for candidate_dir in (cwd, source_root / "sample", executable_dir, prefix, path_driver):
+                candidate_dir.mkdir(parents=True)
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(prefix)), \
+                        mock.patch.object(sample_module.shutil, "which", return_value=str(path_driver)):
+                    with self.assertRaisesRegex(Sampler.Error, "^Sample Driver Not Found$"):
+                        Sampler().execution_path
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_execution_path_skips_invalid_executable_path(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            prefix = root / "venv"
+            path_dir = root / "path"
+            for candidate_dir in (cwd, source_root / "sample", prefix, path_dir):
+                candidate_dir.mkdir(parents=True)
+            prefix_driver = prefix / "sample.exe"
+            prefix_driver.touch()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sys, "executable", None), \
+                        mock.patch.object(sys, "prefix", prefix), \
+                        mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True):
+                    self.assertEqual(Sampler().execution_path, str(prefix_driver.resolve()))
+            finally:
+                os.chdir(str(original_cwd))
 
 
 def wait_until_sampling_stops(is_measuring, cancel, timeout_seconds=5.0,

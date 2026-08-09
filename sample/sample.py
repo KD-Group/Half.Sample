@@ -1,8 +1,20 @@
 import os
 import shutil
+import sys
+from pathlib import Path
 
 from . import Process
 from . import Result
+
+
+def _existing_file(*parts):
+    try:
+        candidate = Path(parts[0]).joinpath(*parts[1:])
+        if candidate.is_file():
+            return str(candidate.resolve())
+    except (OSError, TypeError, ValueError):
+        return None
+    return None
 
 
 class Sampler:
@@ -10,21 +22,39 @@ class Sampler:
     def execution_path(self) -> str:
         main_path = os.path.join(os.path.dirname(__file__), '..')
 
+        # keep the historical current-working-directory override first
+        execution_path = _existing_file('sample.exe')
+        if execution_path:
+            return execution_path
+
         # build if SConstruct file exists
         if os.path.exists(os.path.join(main_path, 'SConstruct')):
             if os.system('cd {} && scons'.format(main_path)) != 0:
                 raise self.Error("Compile C++ Driver Error")
 
         # try to use cpp_build/sample.exe when developing
-        execution_name = 'sample.exe'
-        if not os.path.exists(execution_name):
-            execution_name = os.path.join(main_path, 'cpp_build', execution_name)
-        if os.path.exists(execution_name):
-            return os.path.abspath(execution_name)
+        execution_path = _existing_file(main_path, 'cpp_build', 'sample.exe')
+        if execution_path:
+            return execution_path
+
+        # try the Python/frozen executable directory
+        try:
+            executable_directory = Path(sys.executable).parent
+        except (OSError, TypeError, ValueError):
+            executable_directory = None
+        execution_path = _existing_file(executable_directory, 'sample.exe')
+        if execution_path:
+            return execution_path
+
+        # try the environment root used by venv/uv data-file installs
+        execution_path = _existing_file(sys.prefix, 'sample.exe')
+        if execution_path:
+            return execution_path
 
         # try to find sample.exe in system path when release
-        if shutil.which("sample.exe"):
-            return shutil.which("sample.exe")
+        execution_path = _existing_file(shutil.which("sample.exe"))
+        if execution_path:
+            return execution_path
 
         raise self.Error('Sample Driver Not Found')
 
