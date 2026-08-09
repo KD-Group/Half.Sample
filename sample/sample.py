@@ -1,46 +1,64 @@
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
 
 from . import Process
 from . import Result
 
 
+_SOURCE_ROOT = Path(os.path.realpath(os.path.abspath(__file__))).parent.parent
+_SOURCE_BUILD_LOCK = threading.Lock()
+
+
 def _existing_file(*parts):
     try:
         candidate = Path(parts[0]).joinpath(*parts[1:])
+    except (TypeError, ValueError):
+        return None
+    try:
         if candidate.is_file():
             return str(candidate.resolve())
-    except (OSError, TypeError, ValueError):
+    except OSError:
         return None
     return None
+
+
+def _is_source_checkout():
+    return all((
+        _existing_file(_SOURCE_ROOT, 'SConstruct'),
+        _existing_file(_SOURCE_ROOT, 'setup.py'),
+        _existing_file(_SOURCE_ROOT, 'sample', 'sample.py'),
+    ))
 
 
 class Sampler:
     @property
     def execution_path(self) -> str:
-        main_path = os.path.join(os.path.dirname(__file__), '..')
-
         # keep the historical current-working-directory override first
         execution_path = _existing_file('sample.exe')
         if execution_path:
             return execution_path
 
-        # build if SConstruct file exists
-        if os.path.exists(os.path.join(main_path, 'SConstruct')):
-            if os.system('cd {} && scons'.format(main_path)) != 0:
-                raise self.Error("Compile C++ Driver Error")
-
-        # try to use cpp_build/sample.exe when developing
-        execution_path = _existing_file(main_path, 'cpp_build', 'sample.exe')
-        if execution_path:
-            return execution_path
+        # try to use (or build) cpp_build/sample.exe in a source checkout
+        if _is_source_checkout():
+            execution_path = _existing_file(_SOURCE_ROOT, 'cpp_build', 'sample.exe')
+            if execution_path:
+                return execution_path
+            with _SOURCE_BUILD_LOCK:
+                execution_path = _existing_file(_SOURCE_ROOT, 'cpp_build', 'sample.exe')
+                if not execution_path:
+                    if os.system('cd {} && scons'.format(_SOURCE_ROOT)) != 0:
+                        raise self.Error("Compile C++ Driver Error")
+                    execution_path = _existing_file(_SOURCE_ROOT, 'cpp_build', 'sample.exe')
+            if execution_path:
+                return execution_path
 
         # try the Python/frozen executable directory
         try:
             executable_directory = Path(sys.executable).parent
-        except (OSError, TypeError, ValueError):
+        except (TypeError, ValueError):
             executable_directory = None
         execution_path = _existing_file(executable_directory, 'sample.exe')
         if execution_path:
@@ -52,7 +70,11 @@ class Sampler:
             return execution_path
 
         # try to find sample.exe in system path when release
-        execution_path = _existing_file(shutil.which("sample.exe"))
+        try:
+            path_driver = shutil.which("sample.exe")
+        except (OSError, ValueError):
+            path_driver = None
+        execution_path = _existing_file(path_driver)
         if execution_path:
             return execution_path
 

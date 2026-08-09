@@ -1,7 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor
 import importlib
 import math
 import os
 import sys
+import threading
 import time
 import tempfile
 import unittest
@@ -13,7 +15,333 @@ from sample import Result, Sampler, sampler
 sample_module = importlib.import_module("sample.sample")
 
 
+def create_source_checkout(root):
+    markers = [root / "SConstruct", root / "setup.py", root / "sample" / "sample.py"]
+    for marker in markers:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+
+
 class DriverDiscoveryTest(unittest.TestCase):
+    def test_installed_package_ignores_unrelated_sconstruct(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            installed_root = root / "venv" / "Lib" / "site-packages"
+            package_file = installed_root / "sample" / "sample.py"
+            executable_dir = root / "python"
+            prefix = root / "venv"
+            for candidate_dir in (cwd, package_file.parent, executable_dir, prefix):
+                candidate_dir.mkdir(parents=True, exist_ok=True)
+            package_file.touch()
+            (installed_root / "SConstruct").touch()
+            prefix_driver = prefix / "sample.exe"
+            prefix_driver.touch()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(package_file)), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", installed_root, create=True), \
+                        mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(prefix)), \
+                        mock.patch.object(sample_module.shutil, "which", return_value=None), \
+                        mock.patch.object(sample_module.os, "system", return_value=1) as system:
+                    self.assertEqual(Sampler().execution_path, str(prefix_driver.resolve()))
+                    system.assert_not_called()
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_relative_module_file_keeps_source_root_after_cwd_changes(self):
+        source_text = Path(sample_module.__file__).read_text(encoding="utf-8")
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            import_root = root / "import-root"
+            source_root = import_root / "relative-source"
+            later_cwd = root / "later-cwd"
+            relative_file = Path("relative-source") / "sample" / "sample.py"
+            create_source_checkout(source_root)
+            source_driver = source_root / "cpp_build" / "sample.exe"
+            source_driver.parent.mkdir()
+            source_driver.touch()
+            later_cwd.mkdir()
+
+            namespace = {
+                "__file__": str(relative_file),
+                "__name__": "sample.relative_discovery_test",
+                "__package__": "sample",
+            }
+            try:
+                os.chdir(str(import_root))
+                exec(compile(source_text, str(relative_file), "exec"), namespace)
+                os.chdir(str(later_cwd))
+                with mock.patch.object(sys, "executable", str(root / "python" / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(root / "venv")), \
+                        mock.patch.object(namespace["shutil"], "which", return_value=None):
+                    discovered = namespace["Sampler"]().execution_path
+                    self.assertEqual(discovered, str(source_driver.resolve()))
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_path_lookup_errors_keep_stable_not_found_error(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            package_file = root / "installed" / "sample" / "sample.py"
+            cwd.mkdir(parents=True)
+            package_file.parent.mkdir(parents=True)
+            package_file.touch()
+
+            try:
+                os.chdir(str(cwd))
+                for lookup_error in (OSError("lookup failed"), ValueError("invalid PATH")):
+                    with self.subTest(lookup_error=type(lookup_error).__name__), \
+                            mock.patch.object(sample_module, "__file__", str(package_file)), \
+                            mock.patch.object(sample_module, "_SOURCE_ROOT", package_file.parent.parent, create=True), \
+                            mock.patch.object(sys, "executable", str(root / "python" / "python.exe")), \
+                            mock.patch.object(sys, "prefix", str(root / "venv")), \
+                            mock.patch.object(sample_module.shutil, "which", side_effect=lookup_error):
+                        with self.assertRaisesRegex(Sampler.Error, "^Sample Driver Not Found$"):
+                            Sampler().execution_path
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_concurrent_source_discovery_builds_driver_once(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            create_source_checkout(source_root)
+            source_driver = source_root / "cpp_build" / "sample.exe"
+            source_driver.parent.mkdir()
+            cwd.mkdir()
+            real_existing_file = sample_module._existing_file
+            state_lock = threading.Lock()
+            missing_driver_barrier = threading.Barrier(2)
+            state = {"calls": 0, "prechecks": 0}
+
+            def synchronize_missing_driver_checks(*parts):
+                result = real_existing_file(*parts)
+                driver_parts = (source_root, "cpp_build", "sample.exe")
+                if parts == driver_parts and result is None:
+                    with state_lock:
+                        should_wait = state["prechecks"] < 2
+                        if should_wait:
+                            state["prechecks"] += 1
+                    if should_wait:
+                        missing_driver_barrier.wait()
+                return result
+
+            def build_driver(_command):
+                with state_lock:
+                    state["calls"] += 1
+                source_driver.touch()
+                return 0
+
+            def discover():
+                return Sampler().execution_path
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", source_root, create=True), \
+                        mock.patch.object(sys, "executable", str(root / "python" / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(root / "venv")), \
+                        mock.patch.object(sample_module.shutil, "which", return_value=None), \
+                        mock.patch.object(sample_module, "_existing_file",
+                                          side_effect=synchronize_missing_driver_checks), \
+                        mock.patch.object(sample_module.os, "system", side_effect=build_driver):
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        results = list(executor.map(lambda _index: discover(), range(2)))
+                self.assertEqual(results, [str(source_driver.resolve())] * 2)
+                self.assertEqual(state["calls"], 1)
+                self.assertEqual(state["prechecks"], 2)
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_concurrent_source_build_failures_are_consistent(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            create_source_checkout(source_root)
+            (source_root / "cpp_build").mkdir()
+            cwd.mkdir()
+            real_existing_file = sample_module._existing_file
+            state_lock = threading.Lock()
+            missing_driver_barrier = threading.Barrier(2)
+            state = {"calls": 0, "prechecks": 0}
+
+            def synchronize_missing_driver_checks(*parts):
+                result = real_existing_file(*parts)
+                driver_parts = (source_root, "cpp_build", "sample.exe")
+                if parts == driver_parts and result is None:
+                    with state_lock:
+                        should_wait = state["prechecks"] < 2
+                        if should_wait:
+                            state["prechecks"] += 1
+                    if should_wait:
+                        missing_driver_barrier.wait()
+                return result
+
+            def fail_build(_command):
+                with state_lock:
+                    state["calls"] += 1
+                return 1
+
+            def discover_error():
+                try:
+                    Sampler().execution_path
+                except Sampler.Error as error:
+                    return str(error)
+                return "no error"
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
+                        mock.patch.object(sample_module, "_existing_file",
+                                          side_effect=synchronize_missing_driver_checks), \
+                        mock.patch.object(sample_module.os, "system", side_effect=fail_build):
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        errors = list(executor.map(lambda _index: discover_error(), range(2)))
+                self.assertEqual(errors, ["Compile C++ Driver Error"] * 2)
+                self.assertEqual(state["calls"], 2)
+                self.assertEqual(state["prechecks"], 2)
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_existing_file_does_not_swallow_internal_type_error(self):
+        with mock.patch.object(sample_module.Path, "is_file", side_effect=TypeError("programming error")):
+            with self.assertRaisesRegex(TypeError, "programming error"):
+                sample_module._existing_file("sample.exe")
+
+    def test_path_lookup_type_error_propagates(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            cwd.mkdir()
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "_SOURCE_ROOT", root / "installed"), \
+                        mock.patch.object(sys, "executable", str(root / "python" / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(root / "venv")), \
+                        mock.patch.object(sample_module.shutil, "which",
+                                          side_effect=TypeError("programming error")):
+                    with self.assertRaisesRegex(TypeError, "programming error"):
+                        Sampler().execution_path
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_existing_file_handles_file_directory_and_broken_symlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            unicode_target = root / "驱动文件.exe"
+            unicode_target.touch()
+            directory_target = root / "driver-directory"
+            directory_target.mkdir()
+            file_link = root / "file-link.exe"
+            directory_link = root / "directory-link.exe"
+            broken_link = root / "broken-link.exe"
+            try:
+                os.symlink(str(unicode_target), str(file_link))
+                os.symlink(str(directory_target), str(directory_link), target_is_directory=True)
+                os.symlink(str(root / "missing.exe"), str(broken_link))
+            except (NotImplementedError, OSError) as error:
+                self.skipTest("symbolic links unavailable: {}".format(error))
+
+            self.assertEqual(sample_module._existing_file(file_link), str(unicode_target.resolve()))
+            self.assertIsNone(sample_module._existing_file(directory_link))
+            self.assertIsNone(sample_module._existing_file(broken_link))
+
+    def test_source_marker_directories_do_not_trigger_build(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            prefix = root / "venv"
+            cwd.mkdir()
+            (source_root / "sample").mkdir(parents=True)
+            (source_root / "sample" / "sample.py").touch()
+            (source_root / "SConstruct").touch()
+            (source_root / "setup.py").mkdir()
+            prefix.mkdir()
+            prefix_driver = prefix / "sample.exe"
+            prefix_driver.touch()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
+                        mock.patch.object(sys, "executable", str(root / "python" / "python.exe")), \
+                        mock.patch.object(sys, "prefix", str(prefix)), \
+                        mock.patch.object(sample_module.shutil, "which", return_value=None), \
+                        mock.patch.object(sample_module.os, "system") as system:
+                    self.assertEqual(Sampler().execution_path, str(prefix_driver.resolve()))
+                    system.assert_not_called()
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_existing_source_driver_does_not_enter_build_lock(self):
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cwd = root / "cwd"
+            source_root = root / "source"
+            create_source_checkout(source_root)
+            source_driver = source_root / "cpp_build" / "sample.exe"
+            source_driver.parent.mkdir()
+            source_driver.touch()
+            cwd.mkdir()
+            build_lock = mock.MagicMock()
+
+            try:
+                os.chdir(str(cwd))
+                with mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
+                        mock.patch.object(sample_module, "_SOURCE_BUILD_LOCK", build_lock):
+                    self.assertEqual(Sampler().execution_path, str(source_driver.resolve()))
+                    build_lock.__enter__.assert_not_called()
+            finally:
+                os.chdir(str(original_cwd))
+
+    def test_source_build_failure_and_exception_allow_later_retry(self):
+        original_cwd = Path.cwd()
+        for first_failure in ("return_code", "exception"):
+            with self.subTest(first_failure=first_failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                cwd = root / "cwd"
+                source_root = root / "source"
+                create_source_checkout(source_root)
+                source_driver = source_root / "cpp_build" / "sample.exe"
+                source_driver.parent.mkdir()
+                cwd.mkdir()
+                calls = []
+
+                def build_driver(_command):
+                    calls.append(len(calls) + 1)
+                    if len(calls) == 1:
+                        if first_failure == "exception":
+                            raise OSError("scons unavailable")
+                        return 1
+                    source_driver.touch()
+                    return 0
+
+                try:
+                    os.chdir(str(cwd))
+                    with mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
+                            mock.patch.object(sample_module.os, "system", side_effect=build_driver):
+                        expected_error = OSError if first_failure == "exception" else Sampler.Error
+                        with self.assertRaises(expected_error):
+                            Sampler().execution_path
+                        self.assertEqual(Sampler().execution_path, str(source_driver.resolve()))
+                        self.assertEqual(calls, [1, 2])
+                finally:
+                    os.chdir(str(original_cwd))
+
     def test_execution_path_does_not_build_when_cwd_driver_exists(self):
         original_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as directory:
@@ -29,6 +357,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             try:
                 os.chdir(str(cwd))
                 with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
                         mock.patch.object(sample_module.os, "system", return_value=1) as system:
                     self.assertEqual(Path(Sampler().execution_path).resolve(), cwd_driver.resolve())
                     system.assert_not_called()
@@ -47,6 +376,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             for candidate_dir in (cwd, source_root / "sample", source_root / "cpp_build",
                                   executable_dir, prefix, path_dir):
                 candidate_dir.mkdir(parents=True)
+            create_source_checkout(source_root)
             candidates = [
                 cwd / "sample.exe",
                 source_root / "cpp_build" / "sample.exe",
@@ -60,6 +390,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             try:
                 os.chdir(str(cwd))
                 with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
                         mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
                         mock.patch.object(sys, "prefix", str(prefix)), \
                         mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True), \
@@ -71,6 +402,8 @@ class DriverDiscoveryTest(unittest.TestCase):
                         self.assertEqual(Path.cwd(), expected_cwd)
                         self.assertEqual(os.environ["PATH"], expected_path)
                         expected.unlink()
+                        if expected == source_root / "cpp_build" / "sample.exe":
+                            (source_root / "SConstruct").unlink()
                     system.assert_not_called()
             finally:
                 os.chdir(str(original_cwd))
@@ -92,6 +425,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             try:
                 os.chdir(str(cwd))
                 with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
                         mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
                         mock.patch.object(sys, "prefix", str(prefix)), \
                         mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True):
@@ -118,6 +452,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             try:
                 os.chdir(str(cwd))
                 with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
                         mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
                         mock.patch.object(sys, "prefix", str(prefix)), \
                         mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True):
@@ -137,6 +472,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             for candidate_dir in (cwd, source_root / "sample", source_root / "cpp_build",
                                   executable_dir, prefix, path_dir):
                 candidate_dir.mkdir(parents=True)
+            create_source_checkout(source_root)
             (cwd / "sample.exe").mkdir()
             source_driver = source_root / "cpp_build" / "sample.exe"
             source_driver.touch()
@@ -144,6 +480,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             try:
                 os.chdir(str(cwd))
                 with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
                         mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
                         mock.patch.object(sys, "prefix", str(prefix)), \
                         mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True):
@@ -166,6 +503,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             try:
                 os.chdir(str(cwd))
                 with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
                         mock.patch.object(sys, "executable", str(executable_dir / "python.exe")), \
                         mock.patch.object(sys, "prefix", str(prefix)), \
                         mock.patch.object(sample_module.shutil, "which", return_value=str(path_driver)):
@@ -190,6 +528,7 @@ class DriverDiscoveryTest(unittest.TestCase):
             try:
                 os.chdir(str(cwd))
                 with mock.patch.object(sample_module, "__file__", str(source_root / "sample" / "sample.py")), \
+                        mock.patch.object(sample_module, "_SOURCE_ROOT", source_root), \
                         mock.patch.object(sys, "executable", None), \
                         mock.patch.object(sys, "prefix", prefix), \
                         mock.patch.dict(os.environ, {"PATH": str(path_dir)}, clear=True):
