@@ -112,8 +112,14 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
     sampling_time = std::max(1, sampling_time);
     Commander::Base::variable(sampling_time);
     int cropped_length = int(Constant::CroppedLength * sampling_frequency / Constant::MaxSamplingFrequency);
-    valid_length = waveform_length / 2 - cropped_length;
-    valid_length = valid_length > cropped_length ? valid_length : waveform_length;
+    if (waveform_processing_mode == "independent_cycle") {
+        // Independent-cycle processing keeps a complete period.  The fitting
+        // stage may select a valid monotonic part from that period later.
+        valid_length = waveform_length;
+    } else {
+        valid_length = waveform_length / 2 - cropped_length;
+        valid_length = valid_length > cropped_length ? valid_length : waveform_length;
+    }
     Commander::Base::variable(valid_length);
     return true;
 }

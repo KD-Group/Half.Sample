@@ -176,7 +176,8 @@ bool summation(const Config::SamplingConfig& config, Result::SamplingResult& res
 }
 
 Waveform average(const Config::SamplingConfig& config, Result::SamplingResult& result, const double frequency) {
-    int resultWaveLength = int(config.sampling_frequency / frequency / 2);
+    const bool independent_cycle = config.waveform_processing_mode == "independent_cycle";
+    int resultWaveLength = int(config.sampling_frequency / frequency / (independent_cycle ? 1 : 2));
     resultWaveLength = std::min(resultWaveLength, config.valid_length);
 
     int merged_size = resultWaveLength / Constant::MaxAverageSize + 1;

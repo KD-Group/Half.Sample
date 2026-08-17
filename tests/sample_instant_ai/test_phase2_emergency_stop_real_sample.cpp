@@ -36,18 +36,23 @@ std::vector<double> load_samples(const std::string& path) {
     return samples;
 }
 
-void assert_real_sample_result(const std::vector<double>& samples, int expected_candidates, int requested_waveforms) {
+void assert_real_sample_result(const std::vector<double>& samples,
+                               int expected_candidates,
+                               int expected_discarded,
+                               int requested_waveforms) {
     const auto result = Commander::Processor::extract_independent_cycles(
         samples, 20000000, 50.0, requested_waveforms);
     assert(result.success);
     assert(result.candidate_waveforms == expected_candidates);
-    assert(result.discarded_waveforms == 1);
+    assert(result.discarded_waveforms == expected_discarded);
     assert(result.accepted_waveforms == requested_waveforms);
     assert(result.cycles.size() == static_cast<std::size_t>(requested_waveforms));
 
     Config::SamplingConfig config;
     config.auto_mode = false;
     assert(config.update(requested_waveforms, 50.0, 0.0, 100, 10.0, "independent_cycle"));
+    assert(config.waveform_length == 400000);
+    assert(config.valid_length == config.waveform_length);
     Result::SamplingResult processed(false);
     processed.totalSamplingBuffer = samples;
     processed.resultWave.assign(static_cast<std::size_t>(config.valid_length), 0.0);
@@ -75,7 +80,7 @@ void test_phase2_emergency_stop_50hz_average32_supports_32_cycles() {
 
     const std::vector<double> samples = load_samples(path);
     assert(samples.size() == 13200000);
-    assert_real_sample_result(samples, 33, 32);
+    assert_real_sample_result(samples, 33, 1, 32);
 }
 
 void test_phase2_emergency_stop_50hz_average32_doubled_supports_64_cycles() {
@@ -91,5 +96,5 @@ void test_phase2_emergency_stop_50hz_average32_doubled_supports_64_cycles() {
     std::vector<double> doubled = samples;
     doubled.insert(doubled.end(), samples.begin(), samples.end());
     assert(doubled.size() == 26400000);
-    assert_real_sample_result(doubled, 66, 64);
+    assert_real_sample_result(doubled, 66, 2, 64);
 }

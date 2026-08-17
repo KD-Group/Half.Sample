@@ -53,27 +53,47 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
         return result;
     }
 
-    const std::size_t half_wave_length = static_cast<std::size_t>(waveform_length / 2);
     result.candidate_waveforms = static_cast<int>(phase_starts.size());
     if (result.candidate_waveforms < requested_waveforms + 1) {
         return result;
     }
 
-    // The first complete period is a guard period. No raw samples are joined
-    // across independent acquisitions; only complete period vectors are kept.
-    result.discarded_waveforms = 1;
+    // N complete periods require N+1 phase edges. The final edge is the guard
+    // boundary; any additional detected periods remain unused. Resampling each
+    // edge-to-edge interval aligns cycles despite threshold-crossing jitter.
+    result.discarded_waveforms = result.candidate_waveforms - requested_waveforms;
     result.cycles.reserve(static_cast<std::size_t>(requested_waveforms));
     for (int cycle = 0; cycle < requested_waveforms; ++cycle) {
-        const std::size_t start = phase_starts[static_cast<std::size_t>(cycle + 1)];
-        const std::size_t end = start + half_wave_length;
-        if (end > samples.size()) {
+        const std::size_t start = phase_starts[static_cast<std::size_t>(cycle)];
+        const std::size_t end = phase_starts[static_cast<std::size_t>(cycle + 1)];
+        const std::size_t source_length = end - start;
+        if (start < static_cast<std::size_t>(Constant::CroppedLength) || source_length == 0 ||
+            source_length < static_cast<std::size_t>(waveform_length / 2) ||
+            source_length > static_cast<std::size_t>(waveform_length * 3 / 2)) {
             result.cycles.clear();
             result.accepted_waveforms = 0;
             result.success = false;
             return result;
         }
-        result.cycles.emplace_back(samples.begin() + static_cast<std::ptrdiff_t>(start),
-                                   samples.begin() + static_cast<std::ptrdiff_t>(end));
+
+        double base_sum = 0.0;
+        for (int j = 0; j < Constant::CroppedLength / 2; ++j) {
+            base_sum += samples[start - Constant::CroppedLength + static_cast<std::size_t>(j)];
+        }
+        const double base_value = base_sum / (Constant::CroppedLength / 2);
+
+        std::vector<double> aligned_cycle(static_cast<std::size_t>(waveform_length));
+        for (int point = 0; point < waveform_length; ++point) {
+            const double source_position =
+                static_cast<double>(point) * static_cast<double>(source_length - 1) /
+                static_cast<double>(waveform_length - 1);
+            const std::size_t left = static_cast<std::size_t>(source_position);
+            const std::size_t right = std::min(left + 1, source_length - 1);
+            const double fraction = source_position - static_cast<double>(left);
+            const double value = samples[start + left] * (1.0 - fraction) + samples[start + right] * fraction;
+            aligned_cycle[static_cast<std::size_t>(point)] = value - base_value;
+        }
+        result.cycles.emplace_back(std::move(aligned_cycle));
     }
 
     result.accepted_waveforms = static_cast<int>(result.cycles.size());
