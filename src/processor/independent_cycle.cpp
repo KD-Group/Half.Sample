@@ -1,5 +1,8 @@
 #include "independent_cycle.hpp"
 
+#include "../constant.hpp"
+
+#include <algorithm>
 #include <cmath>
 
 namespace Commander {
@@ -20,7 +23,38 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
         return result;
     }
 
-    result.candidate_waveforms = static_cast<int>(samples.size() / static_cast<std::size_t>(waveform_length));
+    const auto limits = std::minmax_element(samples.begin(), samples.end());
+    const double minimum = *limits.first;
+    const double maximum = *limits.second;
+    const double span = maximum - minimum;
+    if (span < Constant::MinVoltageAmplitude) {
+        return result;
+    }
+
+    const double lower_bound = minimum + span * Constant::LowerBound;
+    const double upper_bound = minimum + span * Constant::UpperBound;
+    bool under_lower_bound = false;
+    std::vector<std::size_t> phase_starts;
+    phase_starts.reserve(samples.size() / static_cast<std::size_t>(waveform_length));
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        if (samples[i] <= lower_bound) {
+            under_lower_bound = true;
+        } else if (under_lower_bound && samples[i] >= upper_bound) {
+            const bool separated_from_previous =
+                phase_starts.empty() ||
+                i - phase_starts.back() >= static_cast<std::size_t>(waveform_length * 0.5);
+            if (separated_from_previous) {
+                phase_starts.push_back(i);
+            }
+            under_lower_bound = false;
+        }
+    }
+    if (phase_starts.empty()) {
+        return result;
+    }
+
+    const std::size_t half_wave_length = static_cast<std::size_t>(waveform_length / 2);
+    result.candidate_waveforms = static_cast<int>(phase_starts.size());
     if (result.candidate_waveforms < requested_waveforms + 1) {
         return result;
     }
@@ -30,8 +64,8 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
     result.discarded_waveforms = 1;
     result.cycles.reserve(static_cast<std::size_t>(requested_waveforms));
     for (int cycle = 0; cycle < requested_waveforms; ++cycle) {
-        const std::size_t start = static_cast<std::size_t>(cycle + 1) * static_cast<std::size_t>(waveform_length);
-        const std::size_t end = start + static_cast<std::size_t>(waveform_length / 2);
+        const std::size_t start = phase_starts[static_cast<std::size_t>(cycle + 1)];
+        const std::size_t end = start + half_wave_length;
         if (end > samples.size()) {
             result.cycles.clear();
             result.accepted_waveforms = 0;

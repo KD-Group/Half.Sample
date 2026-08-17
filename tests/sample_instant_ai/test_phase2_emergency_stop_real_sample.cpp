@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,7 @@ void assert_real_sample_result(const std::vector<double>& samples, int expected_
     assert(result.cycles.size() == static_cast<std::size_t>(requested_waveforms));
 
     Config::SamplingConfig config;
+    config.auto_mode = false;
     assert(config.update(requested_waveforms, 50.0, 0.0, 100, 10.0, "independent_cycle"));
     Result::SamplingResult processed(false);
     processed.totalSamplingBuffer = samples;
@@ -53,6 +55,12 @@ void assert_real_sample_result(const std::vector<double>& samples, int expected_
     assert(Commander::Processor::summation(config, processed));
     assert(processed.complete_waveforms == requested_waveforms);
     assert(processed.resultWave.size() == static_cast<std::size_t>(config.valid_length));
+    const auto limits = std::minmax_element(processed.resultWave.begin(), processed.resultWave.end());
+    assert(*limits.second - *limits.first > 0.05);
+    assert(Commander::Processor::estimate(config, processed));
+    assert(processed.estimate.y);
+    const auto fitted_limits = std::minmax_element(processed.estimate.y->begin(), processed.estimate.y->end());
+    assert(*fitted_limits.second - *fitted_limits.first > 0.02);
 }
 
 } // namespace
