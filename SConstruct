@@ -12,6 +12,7 @@ sample_sources = [
     'cpp_build/estimate/estimate.cpp',
     'cpp_build/global/global.cpp',
     'cpp_build/processor/processor.cpp',
+    'cpp_build/processor/independent_cycle.cpp',
     'cpp_build/sampler/mock_sampler.cpp',
     'cpp_build/sampler/instant_ai.cpp',
     'cpp_build/sampler/instant_acquisition.cpp',
@@ -43,6 +44,7 @@ sample_instant_ai_test_sources = [
     'tests/sample_instant_ai/test_instant_acquisition.cpp',
     'tests/sample_instant_ai/test_dump_format.cpp',
     'tests/sample_instant_ai/test_processor_transaction.cpp',
+    'tests/sample_instant_ai/test_phase2_emergency_stop_real_sample.cpp',
     'src/config/sampling_config.cpp',
     'src/commander/base.cpp',
     'src/error/error.cpp',
@@ -53,6 +55,7 @@ sample_instant_ai_test_sources = [
     'src/estimate/estimate.cpp',
     'src/global/global.cpp',
     'src/processor/processor.cpp',
+    'src/processor/independent_cycle.cpp',
     'src/commander/measure.cpp',
 ]
 sample_instant_ai_test = env.Program(

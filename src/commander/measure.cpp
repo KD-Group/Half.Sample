@@ -21,6 +21,7 @@ struct InstantOptions {
     double threshold = 0.0;
     int target_points = 100;
     double max_reliable_polling_hz = 10.0;
+    std::string waveform_processing_mode = "threshold_accumulation";
 };
 
 bool parse_instant_options(const std::string& line_tail, InstantOptions& instant_options) {
@@ -47,6 +48,13 @@ bool parse_instant_options(const std::string& line_tail, InstantOptions& instant
         return false;
     }
     options >> std::ws;
+    if (options.eof()) {
+        return true;
+    }
+    if (!(options >> instant_options.waveform_processing_mode)) {
+        return false;
+    }
+    options >> std::ws;
     return options.eof();
 }
 
@@ -60,6 +68,11 @@ void publish_process_result(Result::SamplingResult& destination, Result::Samplin
     destination.instant_ai_actual_duration_seconds = source.instant_ai_actual_duration_seconds;
     destination.instant_ai_late_reads = source.instant_ai_late_reads;
     destination.instant_ai_interpolated_bins = source.instant_ai_interpolated_bins;
+    destination.requested_waveforms = source.requested_waveforms;
+    destination.complete_waveforms = source.complete_waveforms;
+    destination.discarded_waveforms = source.discarded_waveforms;
+    destination.independent_batches = source.independent_batches;
+    destination.independent_retries = source.independent_retries;
     destination.cancelled = source.cancelled;
     destination.maximum = source.maximum;
     destination.minimum = source.minimum;
@@ -138,7 +151,8 @@ void async_measure(const std::string& dump_file_path) {
     requested_config.auto_mode = (mode == "True");
     requested_config.dump_file_path = dump_file_path;
     if (!requested_config.update(number_of_waveforms, emitting_frequency, instant_options.threshold,
-                                 instant_options.target_points, instant_options.max_reliable_polling_hz)) {
+                                 instant_options.target_points, instant_options.max_reliable_polling_hz,
+                                 instant_options.waveform_processing_mode)) {
         Base::error(Error::INVALID_INSTANT_AI_CONFIG);
         return;
     }
@@ -270,7 +284,8 @@ void to_config() {
     Config::SamplingConfig requested_config = Global::config;
     requested_config.auto_mode = (mode == "True");
     if (!requested_config.update(number_of_waveforms, emitting_frequency, instant_options.threshold,
-                                 instant_options.target_points, instant_options.max_reliable_polling_hz)) {
+                                 instant_options.target_points, instant_options.max_reliable_polling_hz,
+                                 instant_options.waveform_processing_mode)) {
         Base::error(Error::INVALID_INSTANT_AI_CONFIG);
         return;
     }
@@ -309,12 +324,21 @@ void to_dump() {
 void to_process() {
     std::string dump_file_path;
     std::cin >> dump_file_path;
+    std::string processing_mode;
+    std::getline(std::cin, processing_mode);
+    std::istringstream mode_options(processing_mode);
+    processing_mode = "threshold_accumulation";
+    std::string requested_mode;
+    if (mode_options >> requested_mode) {
+        processing_mode = requested_mode;
+    }
     if (Global::result.measuring.load(std::memory_order_acquire)) {
         Base::error(Error::NOW_IN_MEASURING);
         return;
     }
     Config::SamplingConfig pending_config = Global::config;
     pending_config.dump_file_path = dump_file_path;
+    pending_config.waveform_processing_mode = processing_mode;
     Result::SamplingResult pending_result(false);
     bool success = Sampler::Sampler::load_origin_data(pending_config, pending_result);
     do {
@@ -352,6 +376,11 @@ void clear_measure_data() {
     Global::result.instant_ai_actual_duration_seconds = 0.0;
     Global::result.instant_ai_late_reads = 0;
     Global::result.instant_ai_interpolated_bins = 0;
+    Global::result.requested_waveforms = 0;
+    Global::result.complete_waveforms = 0;
+    Global::result.discarded_waveforms = 0;
+    Global::result.independent_batches = 0;
+    Global::result.independent_retries = 0;
     Global::result.cancelled = false;
     Global::result.progress.reset(Global::config.is_instant()
                                       ? Global::config.instant_ai_planned_duration_seconds

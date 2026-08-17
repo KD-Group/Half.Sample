@@ -9,8 +9,12 @@
 namespace Config {
 
 bool SamplingConfig::update(int waveforms, double frequency, double instant_threshold, int instant_target_points,
-                            double instant_max_reliable_polling_hz) {
+                            double instant_max_reliable_polling_hz, const std::string& processing_mode) {
     if (waveforms <= 0 || frequency <= 0 || instant_threshold < 0) {
+        return false;
+    }
+
+    if (processing_mode != "threshold_accumulation" && processing_mode != "independent_cycle") {
         return false;
     }
 
@@ -49,6 +53,7 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
     }
 
     number_of_waveforms = waveforms;
+    waveform_processing_mode = processing_mode;
     emitting_frequency = frequency;
     instant_ai_frequency_threshold = instant_threshold;
     instant_ai_target_points_per_waveform = instant_target_points;

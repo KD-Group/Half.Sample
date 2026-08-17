@@ -81,6 +81,11 @@ struct SamplingResult {
     double instant_ai_actual_duration_seconds{};
     int instant_ai_late_reads{};
     int instant_ai_interpolated_bins{};
+    int requested_waveforms{};
+    int complete_waveforms{};
+    int discarded_waveforms{};
+    int independent_batches{};
+    int independent_retries{};
     bool cancelled{};
 
     double maximum{}, minimum{};

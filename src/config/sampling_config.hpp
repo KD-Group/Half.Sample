@@ -34,10 +34,13 @@ struct SamplingConfig {
 
     bool auto_mode;
 
+    std::string waveform_processing_mode = "threshold_accumulation";
+
     std::string dump_file_path;
 
     bool update(int waveforms, double frequency, double instant_threshold = 0.0, int instant_target_points = 100,
-                double instant_max_reliable_polling_hz = 10.0);
+                double instant_max_reliable_polling_hz = 10.0,
+                const std::string& processing_mode = "threshold_accumulation");
 
     bool is_instant() const { return acquisition_mode == AcquisitionMode::Instant; }
 };

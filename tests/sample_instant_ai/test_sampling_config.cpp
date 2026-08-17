@@ -8,9 +8,16 @@
 
 void test_sampling_config() {
     Config::SamplingConfig config;
+    assert(config.waveform_processing_mode == "threshold_accumulation");
     assert(config.update(3, 0.1, 0.0, 100));
     assert(config.acquisition_mode == Config::AcquisitionMode::Buffered);
     assert(config.sampling_frequency == Constant::MinSamplingFrequency);
+    assert(config.waveform_processing_mode == "threshold_accumulation");
+
+    assert(config.update(32, 50.0, 0.0, 100, 10.0, "independent_cycle"));
+    assert(config.waveform_processing_mode == "independent_cycle");
+    assert(!config.update(32, 50.0, 0.0, 100, 10.0, "unknown_mode"));
+    assert(config.waveform_processing_mode == "independent_cycle");
 
     assert(config.update(3, 10.0, 0.0, 100));
     assert(config.sampling_frequency == Constant::MaxSamplingFrequency);

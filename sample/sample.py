@@ -115,29 +115,36 @@ class Sampler:
     def measure(self, number_of_waveforms: int, emitting_frequency: float, auto_mode: bool = False,
                 instant_ai_frequency_threshold: float = 0.0,
                 instant_ai_target_points_per_waveform: int = 100,
-                instant_ai_max_reliable_polling_hz: float = 10.0) -> Result:
+                instant_ai_max_reliable_polling_hz: float = 10.0,
+                waveform_processing_mode: str = "threshold_accumulation") -> Result:
         command = "to_measure {} {:.12g} {}".format(number_of_waveforms, emitting_frequency, auto_mode)
         if (instant_ai_frequency_threshold != 0.0 or instant_ai_target_points_per_waveform != 100 or
-                instant_ai_max_reliable_polling_hz != 10.0):
+                instant_ai_max_reliable_polling_hz != 10.0 or waveform_processing_mode != "threshold_accumulation"):
             command += " {:.12g} {} {:.12g}".format(
                 instant_ai_frequency_threshold, instant_ai_target_points_per_waveform,
                 instant_ai_max_reliable_polling_hz)
+            command += " {}".format(waveform_processing_mode)
         return self.communicate(command)
 
     def dump(self, filename: str, number_of_waveforms: int, emitting_frequency: float,
              auto_mode: bool = False, instant_ai_frequency_threshold: float = 0.0,
              instant_ai_target_points_per_waveform: int = 100,
-             instant_ai_max_reliable_polling_hz: float = 10.0) -> Result:
+             instant_ai_max_reliable_polling_hz: float = 10.0,
+             waveform_processing_mode: str = "threshold_accumulation") -> Result:
         command = "to_dump {} {} {:.12g} {}".format(filename, number_of_waveforms, emitting_frequency, auto_mode)
         if (instant_ai_frequency_threshold != 0.0 or instant_ai_target_points_per_waveform != 100 or
-                instant_ai_max_reliable_polling_hz != 10.0):
+                instant_ai_max_reliable_polling_hz != 10.0 or waveform_processing_mode != "threshold_accumulation"):
             command += " {:.12g} {} {:.12g}".format(
                 instant_ai_frequency_threshold, instant_ai_target_points_per_waveform,
                 instant_ai_max_reliable_polling_hz)
+            command += " {}".format(waveform_processing_mode)
         return self.communicate(command)
 
-    def process(self, filename: str) -> Result:
-        return self.communicate("to_process {}".format(filename))
+    def process(self, filename: str, waveform_processing_mode: str = None) -> Result:
+        command = "to_process {}".format(filename)
+        if waveform_processing_mode is not None:
+            command += " {}".format(waveform_processing_mode)
+        return self.communicate(command)
 
     def sampling_progress(self) -> Result:
         return self.communicate("to_sampling_progress")

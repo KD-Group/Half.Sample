@@ -2,6 +2,7 @@
 #include <cmath>
 #include <algorithm>
 #include "processor.hpp"
+#include "independent_cycle.hpp"
 #include "../constant.hpp"
 #include "../estimate/estimate.hpp"
 
@@ -95,6 +96,31 @@ bool summation(const Config::SamplingConfig& config, Result::SamplingResult& res
         result.instant_ai_late_reads = reconstructed.late_reads;
         result.instant_ai_interpolated_bins = reconstructed.interpolated_bins;
         result.resultWave = reconstructed.averaged_half_wave;
+        return true;
+    }
+
+    if (config.waveform_processing_mode == "independent_cycle") {
+        const auto independent = extract_independent_cycles(result.totalSamplingBuffer,
+                                                             static_cast<int>(config.sampling_frequency),
+                                                             config.emitting_frequency,
+                                                             config.number_of_waveforms);
+        result.requested_waveforms = config.number_of_waveforms;
+        result.complete_waveforms = independent.accepted_waveforms;
+        result.discarded_waveforms = independent.discarded_waveforms;
+        result.independent_batches = independent.success ? 1 : 0;
+        if (!independent.success) {
+            result.error_code = Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT;
+            return false;
+        }
+
+        for (int point = 0; point < config.valid_length; ++point) {
+            double sum = 0.0;
+            for (const auto& cycle : independent.cycles) {
+                sum += cycle[static_cast<std::size_t>(point)];
+            }
+            result.resultWave[static_cast<std::size_t>(point)] =
+                sum / static_cast<double>(independent.cycles.size());
+        }
         return true;
     }
 
