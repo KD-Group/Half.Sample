@@ -81,7 +81,7 @@ Create deterministic samples with a known period and phase. Verify a batch with 
 
 The test must also verify that fewer than the requested cycles returns an insufficient result and does not produce an averaged waveform.
 
-Add a real-data regression test that reads `D:\kunde\code\KDM3000\sample-软件下降到阶段二后急停采集数据-20260817\13.txt` by default, with `HALF_SAMPLE_REGRESSION_DATA` as an override. The 186 MB file is not copied into the repository. When the file is unavailable outside the development machine, skip with an explicit message; when present, assert the expected 13.2 million samples, 33 source periods, and exactly 32 accepted cycles in `independent_cycle` mode.
+Add a real-data regression test that reads `D:\kunde\code\KDM3000\sample-软件下降到阶段二后急停采集数据-20260817\13.txt` by default, with `HALF_SAMPLE_REGRESSION_DATA` as an override. The 186 MB file is not copied into the repository. When the file is unavailable outside the development machine, skip with an explicit message; when present, assert the expected 13.2 million samples, 33 source periods, and exactly 32 accepted cycles in `independent_cycle` mode. Duplicate the in-memory vector with `insert` to simulate two files concatenated head-to-tail, then assert the duplicated input supports exactly 64 accepted cycles without treating the join as an extra malformed cycle.
 
 - [ ] **Step 2: Run the new test and verify failure.**
 
