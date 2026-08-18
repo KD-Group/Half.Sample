@@ -12,6 +12,12 @@ struct IndependentCycleResult {
     int candidate_waveforms = 0;
     int accepted_waveforms = 0;
     int discarded_waveforms = 0;
+    int rejected_threshold_candidates = 0;
+    int rejected_short_periods = 0;
+    int rejected_long_periods = 0;
+    int rejected_amplitude_cycles = 0;
+    int rejected_baseline_cycles = 0;
+    int rejected_shape_cycles = 0;
     std::vector<std::vector<double>> cycles;
 };
 

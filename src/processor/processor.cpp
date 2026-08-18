@@ -1,6 +1,7 @@
 #include <map>
 #include <cmath>
 #include <algorithm>
+#include <iterator>
 #include "processor.hpp"
 #include "independent_cycle.hpp"
 #include "../constant.hpp"
@@ -106,20 +107,31 @@ bool summation(const Config::SamplingConfig& config, Result::SamplingResult& res
                                                              config.number_of_waveforms);
         result.requested_waveforms = config.number_of_waveforms;
         result.complete_waveforms = independent.accepted_waveforms;
-        result.discarded_waveforms = independent.discarded_waveforms;
-        result.independent_batches = independent.success ? 1 : 0;
-        if (!independent.success) {
+        result.discarded_waveforms += independent.discarded_waveforms;
+        result.rejected_threshold_candidates += independent.rejected_threshold_candidates;
+        result.rejected_short_periods += independent.rejected_short_periods;
+        result.rejected_long_periods += independent.rejected_long_periods;
+        result.rejected_amplitude_cycles += independent.rejected_amplitude_cycles;
+        result.rejected_baseline_cycles += independent.rejected_baseline_cycles;
+        result.rejected_shape_cycles += independent.rejected_shape_cycles;
+        result.independent_batches += 1;
+        result.independent_cycle_accumulator.insert(result.independent_cycle_accumulator.end(),
+                                                    std::make_move_iterator(independent.cycles.begin()),
+                                                    std::make_move_iterator(independent.cycles.end()));
+        result.complete_waveforms = static_cast<int>(result.independent_cycle_accumulator.size());
+        if (result.independent_cycle_accumulator.size() < static_cast<std::size_t>(config.number_of_waveforms)) {
             result.error_code = Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT;
             return false;
         }
 
         for (int point = 0; point < config.valid_length; ++point) {
             double sum = 0.0;
-            for (const auto& cycle : independent.cycles) {
-                sum += cycle[static_cast<std::size_t>(point)];
+            for (int cycle = 0; cycle < config.number_of_waveforms; ++cycle) {
+                sum += result.independent_cycle_accumulator[static_cast<std::size_t>(cycle)]
+                                                                  [static_cast<std::size_t>(point)];
             }
             result.resultWave[static_cast<std::size_t>(point)] =
-                sum / static_cast<double>(independent.cycles.size());
+                sum / static_cast<double>(config.number_of_waveforms);
         }
         return true;
     }

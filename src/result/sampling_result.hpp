@@ -86,6 +86,13 @@ struct SamplingResult {
     int discarded_waveforms{};
     int independent_batches{};
     int independent_retries{};
+    int rejected_threshold_candidates{};
+    int rejected_short_periods{};
+    int rejected_long_periods{};
+    int rejected_amplitude_cycles{};
+    int rejected_baseline_cycles{};
+    int rejected_shape_cycles{};
+    std::vector<std::vector<double>> independent_cycle_accumulator;
     bool cancelled{};
 
     double maximum{}, minimum{};

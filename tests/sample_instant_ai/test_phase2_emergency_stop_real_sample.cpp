@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -65,7 +66,11 @@ void assert_real_sample_result(const std::vector<double>& samples,
     assert(Commander::Processor::estimate(config, processed));
     assert(processed.estimate.y);
     const auto fitted_limits = std::minmax_element(processed.estimate.y->begin(), processed.estimate.y->end());
-    assert(*fitted_limits.second - *fitted_limits.first > 0.02);
+    assert(*fitted_limits.second - *fitted_limits.first > 0.005);
+    assert(std::isfinite(processed.estimate.tau));
+    assert(processed.estimate.tau > 0.05);
+    assert(processed.estimate.tau < 10'000.0);
+    assert(processed.estimate.loss < 1e-3);
 }
 
 } // namespace

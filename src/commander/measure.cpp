@@ -2,6 +2,7 @@
 #include "base.hpp"
 #include "../global/global.hpp"
 #include "../processor/processor.hpp"
+#include <algorithm>
 #include <cstring>
 #include <sstream>
 #include <utility>
@@ -73,6 +74,13 @@ void publish_process_result(Result::SamplingResult& destination, Result::Samplin
     destination.discarded_waveforms = source.discarded_waveforms;
     destination.independent_batches = source.independent_batches;
     destination.independent_retries = source.independent_retries;
+    destination.rejected_threshold_candidates = source.rejected_threshold_candidates;
+    destination.rejected_short_periods = source.rejected_short_periods;
+    destination.rejected_long_periods = source.rejected_long_periods;
+    destination.rejected_amplitude_cycles = source.rejected_amplitude_cycles;
+    destination.rejected_baseline_cycles = source.rejected_baseline_cycles;
+    destination.rejected_shape_cycles = source.rejected_shape_cycles;
+    destination.independent_cycle_accumulator = std::move(source.independent_cycle_accumulator);
     destination.cancelled = source.cancelled;
     destination.maximum = source.maximum;
     destination.minimum = source.minimum;
@@ -99,25 +107,23 @@ void publish_process_failure(Error::Code error_code) {
 
 namespace Commander {
 void measure() {
-    bool success = true;
+    bool success = false;
+    const bool independent_mode = Global::config.waveform_processing_mode == "independent_cycle" &&
+                                  !Global::config.is_instant();
+    int attempts = 0;
 
-    do {
+    while (true) {
+        ++attempts;
         success = Global::sampler->sample(Global::config, Global::result);
-        if (!success)
+        if (success) success = Processor::align(Global::config, Global::result);
+        if (success) success = Processor::summation(Global::config, Global::result);
+        if (success) success = Processor::estimate(Global::config, Global::result);
+        if (success || !independent_mode || attempts >= 3 ||
+            Global::result.error_code != Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT)
             break;
+    }
 
-        success = Processor::align(Global::config, Global::result);
-        if (!success)
-            break;
-
-        success = Processor::summation(Global::config, Global::result);
-        if (!success)
-            break;
-
-        success = Processor::estimate(Global::config, Global::result);
-        if (!success)
-            break;
-    } while (false);
+    if (independent_mode) Global::result.independent_retries = attempts > 1 ? attempts - 1 : 0;
 
     Global::result.success = success;
     Global::result.measuring.store(false, std::memory_order_release);
@@ -214,6 +220,26 @@ void to_query() {
     int instant_ai_interpolated_bins = Global::result.instant_ai_interpolated_bins;
     Base::variable(instant_ai_late_reads);
     Base::variable(instant_ai_interpolated_bins);
+    int complete_waveforms = Global::result.complete_waveforms;
+    int discarded_waveforms = Global::result.discarded_waveforms;
+    int independent_batches = Global::result.independent_batches;
+    int independent_retries = Global::result.independent_retries;
+    int rejected_threshold_candidates = Global::result.rejected_threshold_candidates;
+    int rejected_short_periods = Global::result.rejected_short_periods;
+    int rejected_long_periods = Global::result.rejected_long_periods;
+    int rejected_amplitude_cycles = Global::result.rejected_amplitude_cycles;
+    int rejected_baseline_cycles = Global::result.rejected_baseline_cycles;
+    int rejected_shape_cycles = Global::result.rejected_shape_cycles;
+    Base::variable(complete_waveforms);
+    Base::variable(discarded_waveforms);
+    Base::variable(independent_batches);
+    Base::variable(independent_retries);
+    Base::variable(rejected_threshold_candidates);
+    Base::variable(rejected_short_periods);
+    Base::variable(rejected_long_periods);
+    Base::variable(rejected_amplitude_cycles);
+    Base::variable(rejected_baseline_cycles);
+    Base::variable(rejected_shape_cycles);
 
     if (success) {
         double maximum = Global::result.maximum;
@@ -381,6 +407,13 @@ void clear_measure_data() {
     Global::result.discarded_waveforms = 0;
     Global::result.independent_batches = 0;
     Global::result.independent_retries = 0;
+    Global::result.rejected_threshold_candidates = 0;
+    Global::result.rejected_short_periods = 0;
+    Global::result.rejected_long_periods = 0;
+    Global::result.rejected_amplitude_cycles = 0;
+    Global::result.rejected_baseline_cycles = 0;
+    Global::result.rejected_shape_cycles = 0;
+    Global::result.independent_cycle_accumulator.clear();
     Global::result.cancelled = false;
     Global::result.progress.reset(Global::config.is_instant()
                                       ? Global::config.instant_ai_planned_duration_seconds

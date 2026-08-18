@@ -45,6 +45,7 @@ sample_instant_ai_test_sources = [
     'tests/sample_instant_ai/test_dump_format.cpp',
     'tests/sample_instant_ai/test_processor_transaction.cpp',
     'tests/sample_instant_ai/test_phase2_emergency_stop_real_sample.cpp',
+    'tests/sample_instant_ai/test_independent_cycle.cpp',
     'src/config/sampling_config.cpp',
     'src/commander/base.cpp',
     'src/error/error.cpp',
