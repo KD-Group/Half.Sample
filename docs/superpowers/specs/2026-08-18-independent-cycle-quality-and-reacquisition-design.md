@@ -1,132 +1,193 @@
-# Independent-cycle quality validation and reacquisition design
+# 独立周期质量校验与重新采集设计
 
-## Problem
+## 一、问题描述
 
-The independent-cycle processor currently treats any low-to-high threshold transition separated by at least half a nominal period as a valid boundary. It then accepts every interval between boundaries from `0.5T` to `1.5T` and stretches it to one nominal period. Low-amplitude measurements can contain a short threshold-crossing spike, producing intervals such as `0.54T` and `1.39T`. These intervals pass the current count check, are resampled as complete cycles, and cause an artificial fit with a large or capped `tau`.
+当前独立周期处理逻辑只要检测到两个阈值边界，并且边界间隔大于半个理论周期，就可能把它们当成完整周期。随后程序会把 `0.5T～1.5T` 的数据强制重采样成一个理论周期。
 
-The observed data uses 20 MHz sampling at 50 Hz, so `T=400000` points. The 79 mV samples have regular intervals near `T`; the 72 mV and 65 mV samples contain short and long false intervals. The ADC step is approximately 2.441 mV, making transient threshold crossings more likely at the lower signal levels.
+低幅度信号中，短暂噪声尖峰可能越过上阈值，形成类似 `0.54T` 的错误周期。后续真实边界又可能形成 `1.39T` 的长周期。这些错误区间能够通过当前的数量检查，最终被强制拉伸或压缩后参与平均，导致平均波形失真，拟合得到很大的 `tau`，甚至达到上限。
 
-## Goals
+本次数据使用 20 MHz 采样、50 Hz 激励，因此理论周期为：
 
-1. Count only complete, quality-checked periods toward the requested average count `N`.
-2. Reject transient threshold crossings without creating a phase boundary.
-3. Reject intervals that are materially shorter or longer than one nominal period.
-4. Reject cycles with implausible amplitude, baseline, or shape after enough good cycles exist to form a template.
-5. Continue searching in the current acquisition after rejecting a cycle.
-6. Start a new independent acquisition when the current buffer cannot provide enough valid cycles.
-7. Never concatenate raw samples across independent acquisitions. Only normalized, validated cycles may be combined for averaging.
-8. Expose enough counters and error information to distinguish insufficient data from rejected cycle quality.
+```text
+T = 20 MHz / 50 Hz = 400000 点
+```
 
-## Non-goals
+79 mV 数据的周期边界基本稳定在 400000 点附近，而 72 mV 和 65 mV 数据出现了约 215000 点和 554000 点的异常间隔。ADC 量化步长约为 2.441 mV，信号幅度降低后，短暂量化跳变更容易触发错误边界。
 
-- Changing the legacy threshold-accumulation processing mode.
-- Changing the exponential fitting equation or its optimization method.
-- Silently accepting a lower number of cycles than requested.
-- Stitching raw samples or phases between independent acquisitions.
-- Hiding a failed acquisition behind a fallback fit.
+## 二、目标
 
-## Definitions and fixed formulas
+1. 只有通过质量检查的完整周期才能计入 N 次平均。
+2. 短暂阈值尖峰不能生成周期边界。
+3. 明显短于或长于理论周期的数据区间必须被拒绝。
+4. 在获得足够有效周期后，拒绝幅度、基线或形状明显异常的周期。
+5. 当前采集缓冲区发现坏周期后，继续向后搜索有效周期。
+6. 当前缓冲区无法提供足够有效周期时，重新进行一次独立采集。
+7. 不跨独立采集拼接原始数据或相位，只合并已经归一化并通过校验的周期。
+8. 输出足够的统计信息，使“数据不足”和“周期质量不合格”能够区分。
 
-For sampling frequency `Fs` and emitting frequency `Fe`:
+## 三、非目标
+
+- 不修改 legacy 的阈值累加处理模式。
+- 不修改指数拟合公式和拟合优化方法。
+- 不允许在有效周期不足时静默降低平均次数。
+- 不跨独立采集拼接原始采样点或相位。
+- 不通过兜底拟合掩盖采集失败。
+
+## 四、基本定义和公式
+
+对于采样频率 `Fs` 和激励频率 `Fe`：
 
 ```text
 T = round(Fs / Fe)
 ```
 
-For the current 50 Hz, 20 MHz case, `T=400000` points and the sample interval is `0.05 us`.
-
-### Robust threshold range
-
-Use robust percentiles over the acquisition buffer instead of single global extrema:
+当前 50 Hz、20 MHz 的场景中：
 
 ```text
-Vmin = P1(samples)
-Vmax = P99(samples)
-A = Vmax - Vmin
-L = Vmin + 0.10 * A
-U = Vmin + 0.40 * A
+T = 400000 点
+采样间隔 = 0.05 us
 ```
 
-The existing minimum raw span check remains a separate acquisition-level check. The robust threshold range must be non-empty and finite.
+### 4.1 稳健阈值范围
 
-### Threshold confirmation
+不能直接使用单个全局最小值和最大值，因为一个噪声尖峰就可能改变阈值。使用数据分位数：
 
-Set:
+```text
+Vmin = P1(samples)       // 1% 分位数
+Vmax = P99(samples)      // 99% 分位数
+A = Vmax - Vmin
+L = Vmin + 0.10 * A      // 下阈值
+U = Vmin + 0.40 * A      // 上阈值
+```
+
+原有的最小原始幅度检查仍然保留，但它是整个采集的前置检查，不能替代周期质量检查。阈值范围必须有限且非空。
+
+### 4.2 阈值确认
+
+确认窗口长度定义为：
 
 ```text
 K = max(32, round(0.00005 * T))
 ```
 
-For `T=400000`, `K=32` points. A low-state confirmation requires at least 75% of the K-point window to satisfy `x <= L`. A high-state confirmation requires at least 75% of the K-point window to satisfy `x >= U`.
+当 `T=400000` 时：
 
-A single sample, or a short excursion that immediately falls back below `U`, is noise and does not create a boundary. A confirmed boundary is placed at the first sample of the confirmed high window.
+```text
+K = 32 点 = 1.6 us
+```
 
-### Period-length validation
+低电平确认要求 K 个点中至少 75% 满足：
 
-For consecutive confirmed boundaries `s_i` and `s_j`:
+```text
+x <= L
+```
+
+高电平确认要求 K 个点中至少 75% 满足：
+
+```text
+x >= U
+```
+
+第一次达到上阈值时不能立即生成边界，必须检查后续 K 个点。只有高阈值通过率达到 75%，才确认这是有效的上升越阈值。
+
+例如：
+
+```text
+-0.483398   // 瞬间越过上阈值
+-0.490722
+-0.495605
+-0.502929   // 很快跌回
+```
+
+这种情况的高阈值通过率远低于 75%，应判定为噪声，不生成边界。
+
+### 4.3 周期长度校验
+
+对于连续两个已经确认的边界 `s_i` 和 `s_j`：
 
 ```text
 D = s_j - s_i
 ```
 
-The interval is a complete cycle only if:
+只有满足以下条件，区间才可能是一个完整周期：
 
 ```text
-0.90 * T <= D <= 1.10 * T
+0.90T <= D <= 1.10T
 ```
 
-An early candidate (`D < 0.90T`) is discarded while retaining the previous accepted boundary. A late candidate (`D > 1.10T`) cannot be resampled as one cycle; the interval is discarded and the detector re-anchors at the late candidate so that subsequent cycles can be searched independently.
-
-If a candidate is approximately a multiple of `T`, it indicates a missed boundary, not a valid long cycle. The skipped interval is not counted toward `N`.
-
-### Amplitude validation
-
-For a candidate interval, use robust cycle amplitude:
+当前数据对应：
 
 ```text
-A_i = P99(cycle) - P1(cycle)
+360000 <= D <= 440000 点
 ```
 
-After at least three valid cycles establish a reference:
+如果 `D < 0.90T`：
+
+- 认为当前候选边界过早；
+- 丢弃当前候选边界；
+- 保留上一个有效边界；
+- 继续向后寻找边界。
+
+如果 `D > 1.10T`：
+
+- 不能把这段数据强制重采样为一个周期；
+- 认为中间可能漏检了边界；
+- 放弃这段区间；
+- 以当前候选边界重新作为搜索锚点。
+
+如果候选边界接近 `2T`、`3T` 等周期倍数，说明中间可能漏检周期。这段长区间不计入平均，但后续边界可以继续用于恢复搜索。
+
+### 4.4 周期幅度校验
+
+候选周期的幅度不使用简单的 `max-min`，而使用分位数：
 
 ```text
-A_ref = median(A_1, A_2, ...)
+A_i = P99(cycle_i) - P1(cycle_i)
 ```
 
-Accept later cycles only if:
+前 3 个有效周期用于建立幅度参考：
 
 ```text
-0.70 * A_ref <= A_i <= 1.30 * A_ref
+A_ref = median(A_1, A_2, A_3)
 ```
 
-Using percentiles prevents one quantization spike from determining amplitude.
-
-### Baseline validation
-
-For each cycle, calculate the baseline from the 150 points immediately preceding the 300-point pre-boundary window:
+后续周期必须满足：
 
 ```text
-B_i = median(samples[s_i - 300 ... s_i - 150])
+0.70A_ref <= A_i <= 1.30A_ref
 ```
 
-After a reference baseline is available:
+这个阶段解决的是：周期长度看似正常，但周期本身只有部分波形、幅度突然变小或被异常尖峰放大的问题。
+
+### 4.5 基线校验
+
+对于每个周期，使用起点之前的基线窗口：
+
+```text
+B_i = median(samples[s_i-300 ... s_i-150])
+```
+
+有效基线参考值为：
 
 ```text
 B_ref = median(B_1, B_2, ...)
-baseline_error = abs(B_i - B_ref)
 ```
 
-Accept only if:
+后续周期必须满足：
 
 ```text
-baseline_error <= max(0.005 V, 0.20 * A_ref)
+abs(B_i - B_ref) <= max(0.005 V, 0.20A_ref)
 ```
 
-The pre-boundary window must be fully available; otherwise the cycle is invalid.
+也就是基线偏移不能超过 5 mV 或参考幅度的 20%，取较大值。
 
-### Shape validation
+这个阶段解决的是：周期形状可能正常，但不同周期的直流基线发生跳变，平均后整体被抬高或压低的问题。
 
-The first three cycles use boundary, period, amplitude, and baseline checks only. After that, the normalized cycle becomes a template candidate. For a cycle `y_i` and template `y_ref`, calculate:
+### 4.6 周期形状校验
+
+前 3 个周期只有边界、周期长度、幅度和基线检查。获得足够周期后建立参考模板。
+
+设当前周期为 `y_i`，参考模板为 `y_ref`，周期点数为 `M`：
 
 ```text
 RMSE_i = sqrt(sum((y_i[k] - y_ref[k])^2) / M)
@@ -134,53 +195,197 @@ shape_error = RMSE_i / A_ref
 rho_i = correlation(y_i, y_ref)
 ```
 
-Accept only if:
+要求：
 
 ```text
 shape_error <= 0.15
 rho_i >= 0.90
 ```
 
-The template is updated only with accepted cycles, using a running average or median-based robust update. Rejected cycles never affect the template.
+这个阶段解决的是：周期长度、幅度和基线都正常，但周期内部被错误拉伸、压缩或发生局部形状异常的问题。
 
-## Acquisition and retry flow
+参考模板只能使用已经通过校验的周期更新，任何被拒绝的周期都不能污染模板。
 
-For a requested average count `N`:
+## 五、各处理阶段分别解决什么问题
 
-1. Acquire one independent buffer containing at least `N+1` nominal periods.
-2. Detect confirmed boundaries and validate intervals.
-3. Keep only validated cycles.
-4. If `N` valid cycles are available, use exactly `N` for averaging and fitting.
-5. If the buffer has remaining samples, continue searching for additional valid cycles.
-6. If the buffer is exhausted before reaching `N`, start another independent acquisition.
-7. Do not combine raw buffers. Combine only validated, independently normalized cycles.
-8. Stop after a configurable maximum of three independent acquisitions. If fewer than `N` valid cycles exist, return an explicit insufficient-valid-waveforms error.
+整个流程分为以下阶段：
 
-The acquisition counters must distinguish:
+### 阶段 0：采集完整性检查
 
-- requested waveforms;
-- accepted waveforms;
-- discarded waveforms;
-- rejected short/long intervals;
-- rejected threshold confirmations;
-- rejected amplitude/baseline cycles;
-- rejected shape cycles;
-- number of independent batches;
-- number of retries.
+检查原始缓冲区是否有数据、点数是否足够、原始幅度是否达到基本要求。
 
-## Error behavior
+解决问题：
 
-`success=true` is allowed only when exactly `N` valid cycles have been collected. A low fit loss must not override failed cycle validation. If the maximum retry count is reached, processing fails with a machine-readable category indicating insufficient valid independent cycles.
+- 空数据；
+- 采集长度不足；
+- 完全没有信号；
+- 采集卡没有返回有效数据。
 
-## Acceptance criteria
+这一阶段不能证明周期正确，只能证明“有可能进行周期搜索”。
 
-1. The 79 mV 16-cycle and 32-cycle files retain regular periods and produce the existing normal result within the existing tolerance.
-2. The 72 mV 16-cycle and 32-cycle files reject approximately `0.54T` and `1.39T` intervals; those intervals are never stretched into cycles.
-3. The 65 mV 32-cycle file follows the same rejection path and does not produce a capped `tau` from a malformed averaged wave.
-4. A synthetic one-point or short high-threshold spike does not create a boundary.
-5. A valid cycle with a period in `[0.90T,1.10T]` is accepted.
-6. A cycle with period outside that range is rejected and does not contribute to `N`.
-7. A second independent acquisition can supply cycles missing from the first acquisition without raw phase stitching.
-8. Processing fails explicitly when the retry limit is exhausted before collecting `N` valid cycles.
-9. Legacy mode behavior and existing KDM3000 mode selection remain unchanged.
+### 阶段 1：稳健阈值计算
+
+使用 `P1/P99` 而不是单个最小值和最大值计算上下阈值。
+
+解决问题：
+
+- 单个尖峰改变全局最小值；
+- 单个异常点改变上下阈值；
+- 低幅度信号下阈值位置不稳定。
+
+### 阶段 2：低阈值状态确认
+
+要求低阈值窗口中至少 75% 的点低于 `L`。
+
+解决问题：
+
+- 单个低噪声点触发新周期搜索；
+- 信号尚未真正进入周期起始状态就进入状态机。
+
+### 阶段 3：高阈值状态确认
+
+要求高阈值窗口中至少 75% 的点高于 `U`。
+
+解决问题：
+
+- 单点尖峰越过上阈值；
+- 低幅度信号量化抖动导致的假边界；
+- 越过阈值后立即跌回的瞬时噪声。
+
+### 阶段 4：周期长度校验
+
+检查相邻边界是否满足 `0.90T～1.10T`。
+
+解决问题：
+
+- `0.54T` 短周期；
+- `1.39T` 长周期；
+- 当前代码把异常区间强制拉伸为完整周期的问题。
+
+这是本次修复中最直接阻止 tau 异常的阶段。
+
+### 阶段 5：周期幅度校验
+
+使用 `P99-P1` 判断周期幅度，并与 `A_ref` 比较。
+
+解决问题：
+
+- 周期只包含部分波形；
+- 周期幅度突然衰减；
+- 周期被尖峰放大；
+- 低信号下某个周期明显偏离整体信号。
+
+### 阶段 6：基线校验
+
+比较周期起点前基线 `B_i` 与参考基线 `B_ref`。
+
+解决问题：
+
+- 周期间直流偏置变化；
+- 不同周期的零点不一致；
+- 平均后波形整体偏移。
+
+### 阶段 7：形状校验
+
+使用归一化 RMSE 和相关系数比较当前周期与参考模板。
+
+解决问题：
+
+- 周期长度虽然正常，但内部波形被拉伸或压缩；
+- 局部跳变造成的异常波形；
+- 周期被错误拼接但仍然满足长度条件。
+
+### 阶段 8：有效周期累计
+
+只有通过前面检查的周期才增加 `accepted_waveforms`。
+
+解决问题：
+
+- “检测到了 N 个边界”被误认为“获得了 N 个有效周期”；
+- 坏周期混入平均；
+- 拟合输入中包含未经验证的数据。
+
+### 阶段 9：当前缓冲区补找
+
+当前缓冲区仍有数据时，跳过坏周期并继续向后搜索。
+
+解决问题：
+
+- 一个坏周期导致整次采集失败；
+- 已采集到的后续有效周期被浪费；
+- 低幅度数据偶发噪声导致成功率过低。
+
+### 阶段 10：重新独立采集
+
+当前缓冲区无法提供足够有效周期时，从新的原始缓冲区重新开始检测。
+
+解决问题：
+
+- 当前缓冲区中有效周期数量不足；
+- 当前缓冲区相位或噪声状态不适合继续使用；
+- 避免跨缓冲区拼接造成相位错误。
+
+新的采集只与旧采集合并“已验证的归一化周期”，不合并原始点。
+
+### 阶段 11：最终拟合
+
+只有准确获得 N 个有效周期并完成平均后才进行指数拟合。
+
+解决问题：
+
+- 有效周期不足却继续拟合；
+- 错误波形因为 loss 较小而被误判为成功；
+- tau 达到上限时没有数据质量依据。
+
+## 六、采集和重试流程
+
+请求平均次数为 `N` 时：
+
+1. 进行一次独立采集，至少包含 `N+1` 个理论周期。
+2. 检测经过确认的边界。
+3. 对相邻边界进行周期长度校验。
+4. 对候选周期进行幅度、基线和形状校验。
+5. 只保留有效周期。
+6. 如果有效周期达到 `N`，取其中 N 个进行平均和拟合。
+7. 如果缓冲区还有剩余数据，继续搜索更多有效周期。
+8. 如果缓冲区耗尽仍不足 `N`，重新进行一次独立采集。
+9. 不拼接不同采集的原始数据或相位。
+10. 最多重新独立采集 3 次。
+11. 3 次后仍不足 `N` 个有效周期，返回明确失败结果。
+
+## 七、统计信息和错误行为
+
+必须区分以下统计量：
+
+- 请求周期数；
+- 接受周期数；
+- 丢弃周期数；
+- 短周期数量；
+- 长周期数量；
+- 阈值确认失败数量；
+- 幅度校验失败数量；
+- 基线校验失败数量；
+- 形状校验失败数量；
+- 独立采集批次数；
+- 重新采集次数。
+
+只有在准确获得 N 个有效周期时，才允许：
+
+```text
+success = true
+```
+
+拟合 loss 较小不能覆盖周期校验失败。达到最大重试次数仍不足 N 个有效周期时，必须返回机器可识别的“有效周期不足”错误。
+
+## 八、验收标准
+
+1. 79 mV 的 16 次和 32 次数据，周期仍稳定在 400000 点附近，结果与当前正常结果一致。
+2. 72 mV 的 16 次和 32 次数据，约 `0.54T` 和 `1.39T` 的区间必须被拒绝，不能再被拉伸成完整周期。
+3. 65 mV 的 32 次数据执行同样的拒绝和补采流程，不能因为错误平均波形导致 tau 达到上限。
+4. 人工构造的单点或短时高阈值尖峰不能生成边界。
+5. 周期长度在 `[0.90T, 1.10T]` 内的有效周期可以通过校验。
+6. 周期长度超出范围的周期不能计入 N。
+7. 第二次独立采集可以补足第一次采集缺少的有效周期，但不能拼接两次原始相位。
+8. 达到最大重试次数仍不足 N 个有效周期时，必须明确失败。
+9. legacy 模式以及 KDM3000 中的模式选择行为保持不变。
 
