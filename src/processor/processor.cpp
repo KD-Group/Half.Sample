@@ -10,6 +10,32 @@
 namespace Commander {
 namespace Processor {
 
+namespace {
+
+bool fit_is_identifiable(const Waveform& wave, const Estimate::EstimatedResult& estimate) {
+    if (!wave.values || wave.values->size() < 2 ||
+        !std::isfinite(wave.interval) || wave.interval <= 0.0 ||
+        !std::isfinite(estimate.tau) || !std::isfinite(estimate.w) ||
+        !std::isfinite(estimate.b)) {
+        return false;
+    }
+
+    // A tau at the search boundary is an indication that the acquired window
+    // contains too little exponential evolution to identify tau.
+    if (estimate.tau >= Constant::MaxTauValue * 0.99) {
+        return false;
+    }
+
+    const double duration = wave.interval * static_cast<double>(wave.values->size() - 1);
+    const double normalized_change = 1.0 - std::exp(-duration / estimate.tau);
+    if (!std::isfinite(normalized_change) || normalized_change < 0.05) {
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
 bool align(const Config::SamplingConfig& config, Result::SamplingResult& result) {
     if (config.is_instant() && result.instant_ai_format_version >= 2) {
         bool found_valid_reading = false;
@@ -297,6 +323,12 @@ bool estimate(const Config::SamplingConfig& config, Result::SamplingResult& resu
     } else {
         auto wave = average(config, result, config.emitting_frequency);
         result.estimate = Estimate::one_third_search(wave);
+        if (!config.is_instant() && config.waveform_processing_mode == "independent_cycle" &&
+            !fit_is_identifiable(wave, result.estimate)) {
+            result.estimate = Estimate::EstimatedResult();
+            result.error_code = Error::FIT_NOT_IDENTIFIABLE;
+            return false;
+        }
     }
     return true;
 }

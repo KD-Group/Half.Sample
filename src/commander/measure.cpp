@@ -201,6 +201,8 @@ void to_query() {
     Base::variable(measuring);
     std::string acquisition_mode = Global::config.is_instant() ? "instant_ai" : "buffered_ai";
     Base::variable(acquisition_mode);
+    std::string waveform_processing_mode = Global::config.waveform_processing_mode;
+    Base::variable(waveform_processing_mode);
     if (measuring) {
         return;
     }
@@ -357,6 +359,10 @@ void to_process() {
     std::string requested_mode;
     if (mode_options >> requested_mode) {
         processing_mode = requested_mode;
+    }
+    if (processing_mode != "threshold_accumulation" && processing_mode != "independent_cycle") {
+        Base::error(Error::INVALID_INSTANT_AI_CONFIG);
+        return;
     }
     if (Global::result.measuring.load(std::memory_order_acquire)) {
         Base::error(Error::NOW_IN_MEASURING);
