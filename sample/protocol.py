@@ -45,7 +45,9 @@ def summarize_response(response, limit=512):
         return marker[:limit]
     available = limit - len(marker)
     head_length = (available + 1) // 2
-    return result[:head_length] + marker + result[-(available - head_length):]
+    tail_length = available - head_length
+    tail = result[-tail_length:] if tail_length else ""
+    return result[:head_length] + marker + tail
 
 
 class ProtocolError(ValueError):
@@ -53,11 +55,11 @@ class ProtocolError(ValueError):
 
     def __init__(self, message, response, line_number=None, field_name=None):
         self.line_number = line_number
-        self.field_name = field_name
+        self.field_name = summarize_response(field_name, 120) if field_name is not None else None
         self.response_length = len(response)
         self.response_summary = summarize_response(response)
         details = "line={0}, field={1!r}, response_length={2}, response={3!r}".format(
-            line_number, field_name, self.response_length, self.response_summary
+            line_number, self.field_name, self.response_length, self.response_summary
         )
         super(ProtocolError, self).__init__("{0} ({1})".format(message, details))
 

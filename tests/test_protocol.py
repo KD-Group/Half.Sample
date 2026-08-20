@@ -92,3 +92,24 @@ def test_summarize_response_escapes_controls_and_honors_small_limits():
     assert "\\n" in summary
     assert summarize_response("\x85") == "\\x85"
     assert summarize_response("anything", limit=0) == ""
+
+
+@pytest.mark.parametrize("limit", range(1, 9))
+def test_summarize_response_honors_every_small_positive_limit(limit):
+    summary = summarize_response("abcdefghijklmnopqrstuvwxyz", limit=limit)
+    assert len(summary) <= limit
+    if limit >= 5:
+        assert summary.startswith("a")
+        assert summary.endswith("z")
+
+
+def test_invalid_long_field_name_is_bounded_in_diagnostics():
+    response = ("x" * 2000) + "-=1"
+    with pytest.raises(ProtocolError) as caught:
+        parse_assignments(response)
+    error = caught.value
+    assert error.field_name is not None
+    assert len(error.field_name) <= 120
+    assert len(str(error)) <= 800
+    assert len(error.response_summary) <= 512
+    assert error.response_length == len(response)
