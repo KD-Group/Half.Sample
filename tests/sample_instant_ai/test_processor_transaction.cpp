@@ -18,9 +18,6 @@ void assert_non_finite_result_is_rejected(double Result::SamplingResult::* field
     result.success = true;
     result.maximum = 1.0;
     result.minimum = 0.0;
-    result.cycle_maximum = 1.0;
-    result.cycle_minimum = 0.0;
-    result.v_inf = 1.0;
     result.estimate.interval = 0.1;
     result.estimate.tau = 1.0;
     result.estimate.w = 1.0;
@@ -41,9 +38,6 @@ void assert_non_finite_estimate_is_rejected(double Estimate::EstimatedResult::* 
     result.success = true;
     result.maximum = 1.0;
     result.minimum = 0.0;
-    result.cycle_maximum = 1.0;
-    result.cycle_minimum = 0.0;
-    result.v_inf = 1.0;
     result.estimate.interval = 0.1;
     result.estimate.tau = 1.0;
     result.estimate.w = 1.0;
@@ -72,9 +66,6 @@ void test_processor_transaction() {
     for (double value : non_finite_values) {
         assert_non_finite_result_is_rejected(&Result::SamplingResult::maximum, value);
         assert_non_finite_result_is_rejected(&Result::SamplingResult::minimum, value);
-        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_maximum, value);
-        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_minimum, value);
-        assert_non_finite_result_is_rejected(&Result::SamplingResult::v_inf, value);
         assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::interval, value);
         assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::tau, value);
         assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::w, value);
@@ -94,6 +85,17 @@ void test_processor_transaction() {
         wave_result.estimate.y.reset(new Vector(2, 1.0));
         (*wave_result.estimate.y)[1] = value;
         assert(!Commander::Processor::validate_finite_result(config, wave_result));
+    }
+
+    const char* const processing_modes[] = {"threshold_accumulation", "independent_cycle"};
+    for (const char* mode : processing_modes) {
+        Config::SamplingConfig mode_config;
+        mode_config.waveform_processing_mode = mode;
+        Result::SamplingResult mode_result(false);
+        mode_result.success = true;
+        mode_result.maximum = std::numeric_limits<double>::infinity();
+        assert(!Commander::Processor::validate_finite_result(mode_config, mode_result));
+        assert(mode_result.error_code == Error::SAMPLING_RESULT_NOT_FINITE);
     }
 
     Config::SamplingConfig preserved_config;
