@@ -99,15 +99,17 @@ class Sampler:
             executor.write_line(command)
             lines = executor.read_until('EOF')
             if lines:
-                known_types = {field: type(value) for field, value in result.__dict__.items()}
+                known_types = {
+                    field: type(value) for field, value in result.__dict__.items() if not field.startswith("_")
+                }
                 assignments = parse_assignments(lines, known_types=known_types)
-                result._v_inf_reported = "v_inf" in assignments
                 if "wave" in assignments:
                     for value in assignments["wave"]:
                         if type(value) is not float:
                             raise ProtocolError("unexpected field type", lines, field_name="wave")
                 for field, value in assignments.items():
                     setattr(result, field, value)
+                result._v_inf_reported = "v_inf" in assignments
         except ProtocolError as error:
             raise self.Error(str(error))
         except Exception as e:
@@ -193,6 +195,7 @@ class Sampler:
                 result.estimate = []
                 result.v0 = 0.0
                 result.v_inf = 0.0
+                result.v_inf_valid = False
                 return result
         result.process()
         if not result.success and result.message == "success":
@@ -201,7 +204,8 @@ class Sampler:
 
     @staticmethod
     def _first_non_finite_field(result: Result):
-        for field in ("maximum", "minimum", "sampling_interval", "wave_interval", "tau", "w", "b", "loss"):
+        for field in ("maximum", "minimum", "sampling_interval", "wave_interval", "tau", "w", "b", "loss",
+                      "v_inf", "cycle_maximum", "cycle_minimum"):
             if not math.isfinite(getattr(result, field)):
                 return field
         for index, value in enumerate(result.wave):

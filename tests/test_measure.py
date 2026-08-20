@@ -598,6 +598,13 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
 
         self.assertEqual(result.future_field, 17)
 
+    def test_communicate_sets_voltage_reported_marker_internally(self):
+        missing = Sampler().communicate("to_query", ResponseExecutor("success=True"))
+        reported = Sampler().communicate("to_query", ResponseExecutor("v_inf=0.0"))
+
+        self.assertFalse(missing._v_inf_reported)
+        self.assertTrue(reported._v_inf_reported)
+
     def test_protocol_error_uses_bounded_response_summary(self):
         response = "success=invalid\nsecret=" + "x" * 2000
 
@@ -647,7 +654,8 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
         self.assertEqual(queried.invalid_field, "")
 
     def test_query_rejects_each_non_finite_scalar_without_processing(self):
-        for field in ("maximum", "minimum", "sampling_interval", "wave_interval", "tau", "w", "b", "loss"):
+        for field in ("maximum", "minimum", "sampling_interval", "wave_interval", "tau", "w", "b", "loss",
+                      "v_inf", "cycle_maximum", "cycle_minimum"):
             for value in (float("nan"), float("inf"), float("-inf")):
                 with self.subTest(field=field, value=value):
                     result = self._valid_result()
@@ -679,7 +687,44 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
         result.wave = [5.0, 4.0]
         result.v0 = 99.0
         result.v_inf = 88.0
+        result.v_inf_valid = True
         return result
+
+    def test_query_accepts_explicit_valid_voltage_on_failed_fit(self):
+        response = "\n".join((
+            "success=False", 'message="fit_not_identifiable"', "v_inf=4.2", "v_inf_valid=True",
+        ))
+        client = Sampler()
+        client.communicate = lambda command, executor=None: Sampler().communicate(
+            command, ResponseExecutor(response)
+        )
+
+        queried = client.query()
+
+        self.assertEqual(queried.message, "fit_not_identifiable")
+        self.assertEqual(queried.v_inf, 4.2)
+        self.assertTrue(queried.v_inf_valid)
+
+    def test_query_rejects_unvalidated_voltage_without_rewriting_failure(self):
+        for voltage, validity in ((4.2, False), (0.0, True), (float("nan"), True), (float("inf"), True)):
+            with self.subTest(voltage=voltage, validity=validity):
+                result = Result()
+                result.success = False
+                result.message = "fit_not_identifiable"
+                result.error_category = "calculation"
+                result.retryable = False
+                result.v_inf = voltage
+                result.v_inf_valid = validity
+                result._v_inf_reported = True
+
+                queried = self._query(result)
+
+                self.assertFalse(queried.success)
+                self.assertEqual(queried.message, "fit_not_identifiable")
+                self.assertEqual(queried.error_category, "calculation")
+                self.assertFalse(queried.retryable)
+                self.assertEqual(queried.v_inf, 0.0)
+                self.assertFalse(queried.v_inf_valid)
 
     @staticmethod
     def _valid_response(wave_line):
@@ -706,6 +751,7 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
         self.assertEqual(result.estimate, [])
         self.assertEqual(result.v0, 0.0)
         self.assertEqual(result.v_inf, 0.0)
+        self.assertFalse(result.v_inf_valid)
 
 
 class MyTestCase(unittest.TestCase):
@@ -783,6 +829,7 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(result.instant_ai_actual_duration_seconds, 0.0)
         self.assertEqual(result.instant_ai_late_reads, 0)
         self.assertEqual(result.instant_ai_interpolated_bins, 0)
+        self.assertFalse(result.v_inf_valid)
 
     def test_result_process_preserves_reported_business_v_inf(self):
         result = Result()
@@ -793,11 +840,14 @@ class MyTestCase(unittest.TestCase):
         result.w = -0.5
         result.b = 9.0
         result.v_inf = 1.3
+        result.v_inf_valid = True
+        result._v_inf_reported = True
 
         result.process()
 
         self.assertEqual(result.v0, 8.5)
         self.assertEqual(result.v_inf, 1.3)
+        self.assertTrue(result.v_inf_valid)
 
     def test_result_process_falls_back_to_b_for_old_server_response(self):
         result = Result()
@@ -811,6 +861,24 @@ class MyTestCase(unittest.TestCase):
         result.process()
 
         self.assertEqual(result.v_inf, 9.0)
+        self.assertTrue(result.v_inf_valid)
+
+    def test_result_process_does_not_replace_explicit_zero_voltage(self):
+        result = Result()
+        result.success = True
+        result.wave_interval = 1.0
+        result.wave = [1.0, 0.5]
+        result.tau = 10.0
+        result.w = -0.5
+        result.b = 9.0
+        result.v_inf = 0.0
+        result.v_inf_valid = True
+        result._v_inf_reported = True
+
+        result.process()
+
+        self.assertEqual(result.v_inf, 0.0)
+        self.assertFalse(result.v_inf_valid)
 
     def test_readme_documents_retryable_state_separately_from_acquisition_failures(self):
         readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")

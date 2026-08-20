@@ -118,6 +118,7 @@ class Result:
 
         self.v0 = 0.0
         self.v_inf = 0.0
+        self.v_inf_valid = False
         self._v_inf_reported = False
         self.cycle_maximum = 0.0
         self.cycle_minimum = 0.0
@@ -142,8 +143,16 @@ class Result:
             self.estimate = [w * math.exp(t / -tau) + b for t in self.time_line]
 
             self.v0 = b + w
-            if not self._v_inf_reported and self.v_inf == 0.0:
+            if not self._v_inf_reported:
                 self.v_inf = b
+
+        if self._v_inf_reported:
+            voltage_valid = self.v_inf_valid is True and math.isfinite(self.v_inf) and self.v_inf > 0.0
+        else:
+            voltage_valid = self.success and math.isfinite(self.v_inf) and self.v_inf > 0.0
+        if not voltage_valid:
+            self.v_inf = 0.0
+        self.v_inf_valid = voltage_valid
 
     @property
     def chinese_message(self) -> str:
