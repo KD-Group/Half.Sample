@@ -18,11 +18,11 @@ before_test:
 
 test_script:
   - pycodestyle . --max-line-length=120 --exclude=src/3rdparty
-  - scons -j%NUMBER_OF_PROCESSORS%
   - python -m pytest
 
 build_script:
-  - "[ -e dist ] && rm dist -rf || true"
+  - scons -j%NUMBER_OF_PROCESSORS%
+  - if exist dist rmdir /s /q dist
   - python setup.py sdist
 
 deploy_script:
