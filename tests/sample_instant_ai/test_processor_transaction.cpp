@@ -14,6 +14,7 @@ namespace {
 
 void assert_non_finite_result_is_rejected(double Result::SamplingResult::* field, double value) {
     Config::SamplingConfig config;
+    config.sampling_interval = 0.1;
     Result::SamplingResult result(false);
     result.success = true;
     result.maximum = 1.0;
@@ -34,6 +35,7 @@ void assert_non_finite_result_is_rejected(double Result::SamplingResult::* field
 
 void assert_non_finite_estimate_is_rejected(double Estimate::EstimatedResult::* field, double value) {
     Config::SamplingConfig config;
+    config.sampling_interval = 0.1;
     Result::SamplingResult result(false);
     result.success = true;
     result.maximum = 1.0;
@@ -90,6 +92,7 @@ void test_processor_transaction() {
     const char* const processing_modes[] = {"threshold_accumulation", "independent_cycle"};
     for (const char* mode : processing_modes) {
         Config::SamplingConfig mode_config;
+        mode_config.sampling_interval = 0.1;
         mode_config.waveform_processing_mode = mode;
         Result::SamplingResult mode_result(false);
         mode_result.success = true;
