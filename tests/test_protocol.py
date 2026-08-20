@@ -113,3 +113,18 @@ def test_invalid_long_field_name_is_bounded_in_diagnostics():
     assert len(str(error)) <= 800
     assert len(error.response_summary) <= 512
     assert error.response_length == len(response)
+
+
+def test_summarize_large_response_does_not_iterate_over_the_whole_input():
+    class IterationGuard(str):
+        def __iter__(self):
+            for index, character in enumerate(super(IterationGuard, self).__iter__()):
+                if index >= 1024:
+                    raise AssertionError("summarize_response traversed too much input")
+                yield character
+
+    response = IterationGuard("start\n" + ("x" * (4 * 1024 * 1024)) + "\rend")
+    summary = summarize_response(response, limit=64)
+    assert len(summary) <= 64
+    assert summary.startswith("start\\n")
+    assert summary.endswith("\\rend")

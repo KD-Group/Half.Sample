@@ -18,36 +18,52 @@ _POSITIVE_INFINITY_TOKENS = frozenset(("inf", "+inf", "infinity", "+infinity", "
 _NEGATIVE_INFINITY_TOKENS = frozenset(("-inf", "-infinity", "-1.#inf"))
 
 
+def _escape_character(character):
+    code = ord(character)
+    if character == "\\":
+        return "\\\\"
+    if character == "\r":
+        return "\\r"
+    if character == "\n":
+        return "\\n"
+    if character == "\t":
+        return "\\t"
+    if unicodedata.category(character) == "Cc":
+        return "\\x{0:02x}".format(code)
+    return character
+
+
 def summarize_response(response, limit=512):
-    """Return a bounded, single-line representation of *response*."""
+    """Return a bounded, single-line representation of *response* using O(limit) working memory."""
     if limit <= 0:
         return ""
-    escaped = []
-    for character in response:
-        code = ord(character)
-        if character == "\\":
-            escaped.append("\\\\")
-        elif character == "\r":
-            escaped.append("\\r")
-        elif character == "\n":
-            escaped.append("\\n")
-        elif character == "\t":
-            escaped.append("\\t")
-        elif unicodedata.category(character) == "Cc":
-            escaped.append("\\x{0:02x}".format(code))
-        else:
-            escaped.append(character)
-    result = "".join(escaped)
-    if len(result) <= limit:
-        return result
+    prefix_parts = []
+    prefix_length = 0
+    position = 0
+    while position < len(response) and prefix_length <= limit:
+        escaped_character = _escape_character(response[position])
+        prefix_parts.append(escaped_character)
+        prefix_length += len(escaped_character)
+        position += 1
+    if position == len(response) and prefix_length <= limit:
+        return "".join(prefix_parts)
     marker = "..."
     if limit <= len(marker):
         return marker[:limit]
     available = limit - len(marker)
     head_length = (available + 1) // 2
     tail_length = available - head_length
-    tail = result[-tail_length:] if tail_length else ""
-    return result[:head_length] + marker + tail
+    head = "".join(prefix_parts)[:head_length]
+    tail_parts = []
+    collected_tail_length = 0
+    position = len(response) - 1
+    while position >= 0 and collected_tail_length < tail_length:
+        escaped_character = _escape_character(response[position])
+        tail_parts.append(escaped_character)
+        collected_tail_length += len(escaped_character)
+        position -= 1
+    tail = "".join(reversed(tail_parts))[-tail_length:] if tail_length else ""
+    return head + marker + tail
 
 
 class ProtocolError(ValueError):
