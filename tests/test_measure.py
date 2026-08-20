@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import importlib
+import inspect
 import math
 import os
 import sys
@@ -553,6 +554,160 @@ def wait_until_sampling_stops(is_measuring, cancel, timeout_seconds=5.0,
                 )
             )
         sleep(0.01)
+
+
+class ResponseExecutor:
+    def __init__(self, response):
+        self.response = response
+        self.commands = []
+
+    def write_line(self, command):
+        self.commands.append(command)
+
+    def read_until(self, marker):
+        return self.response
+
+
+class SamplerProtocolIntegrationTest(unittest.TestCase):
+    def test_communicate_parses_result_fields_without_dynamic_execution(self):
+        response = "\n".join((
+            "success=True",
+            'message="success"',
+            "maximum=9.500000",
+            "minimum=-2.250000",
+        ))
+
+        result = Sampler().communicate("to_query", ResponseExecutor(response))
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.message, "success")
+        self.assertEqual(result.maximum, 9.5)
+        self.assertEqual(result.minimum, -2.25)
+        source = inspect.getsource(Sampler.communicate)
+        self.assertNotIn("exec(", source)
+        self.assertNotIn("eval(", source)
+
+    def test_communicate_rejects_wrong_type_for_known_field(self):
+        executor = ResponseExecutor('success=1\nmessage="success"')
+
+        with self.assertRaisesRegex(Sampler.Error, "line=1.*field='success'.*response_length="):
+            Sampler().communicate("to_query", executor)
+
+    def test_communicate_allows_safe_unknown_fields(self):
+        result = Sampler().communicate("to_query", ResponseExecutor("future_field=17"))
+
+        self.assertEqual(result.future_field, 17)
+
+    def test_protocol_error_uses_bounded_response_summary(self):
+        response = "success=invalid\nsecret=" + "x" * 2000
+
+        with self.assertRaises(Sampler.Error) as raised:
+            Sampler().communicate("to_query", ResponseExecutor(response))
+
+        message = str(raised.exception)
+        self.assertIn("line=1", message)
+        self.assertIn("field='success'", message)
+        self.assertIn("response_length=2023", message)
+        self.assertLess(len(message), 800)
+        self.assertNotIn("x" * 1000, message)
+
+    def test_query_preserves_normal_result_processing(self):
+        result = Result()
+        result.success = True
+        result.message = "success"
+        result.maximum = 3.0
+        result.minimum = 1.0
+        result.sampling_interval = 1.0
+        result.wave_interval = 2.0
+        result.tau = 4.0
+        result.w = 2.0
+        result.b = 3.0
+        result.loss = 0.5
+        result.wave = [5.0, 4.0]
+        result.v_inf = 1.3
+        client = Sampler()
+        client.communicate = lambda command, executor=None: result
+
+        queried = client.query()
+
+        self.assertEqual(queried.time_line, [0.0, 2.0])
+        self.assertEqual(len(queried.estimate), 2)
+        self.assertEqual(queried.v0, 5.0)
+        self.assertEqual(queried.v_inf, 1.3)
+
+    def test_query_does_not_override_existing_failure_with_non_finite_fields(self):
+        result = Result()
+        result.success = False
+        result.message = "fit_not_identifiable"
+        result.tau = float("nan")
+        client = Sampler()
+        client.communicate = lambda command, executor=None: result
+
+        queried = client.query()
+
+        self.assertEqual(queried.message, "fit_not_identifiable")
+        self.assertEqual(queried.invalid_field, "")
+
+    def test_query_rejects_each_non_finite_scalar_without_processing(self):
+        for field in ("maximum", "minimum", "sampling_interval", "wave_interval", "tau", "w", "b", "loss"):
+            for value in (float("nan"), float("inf"), float("-inf")):
+                with self.subTest(field=field, value=value):
+                    result = self._valid_result()
+                    setattr(result, field, value)
+                    queried = self._query(result)
+                    self._assert_non_finite_failure(queried, field)
+
+    def test_query_rejects_legacy_non_finite_wave_tokens_without_processing(self):
+        for token in ("nan", "1.#IND", "1.#INF", "-1.#INF"):
+            with self.subTest(token=token):
+                response = self._valid_response("wave=[1.0, {0}]".format(token))
+                client = Sampler()
+                client.communicate = lambda command, executor=None: Sampler().communicate(
+                    command, ResponseExecutor(response)
+                )
+
+                queried = client.query()
+
+                self._assert_non_finite_failure(queried, "wave[1]")
+
+    @staticmethod
+    def _valid_result():
+        result = Result()
+        result.success = True
+        result.message = "success"
+        for field, value in (("maximum", 3.0), ("minimum", 1.0), ("sampling_interval", 1.0),
+                             ("wave_interval", 2.0), ("tau", 4.0), ("w", 2.0), ("b", 3.0), ("loss", 0.5)):
+            setattr(result, field, value)
+        result.wave = [5.0, 4.0]
+        result.v0 = 99.0
+        result.v_inf = 88.0
+        return result
+
+    @staticmethod
+    def _valid_response(wave_line):
+        return "\n".join((
+            "success=True", 'message="success"', "maximum=3.000000", "minimum=1.000000",
+            "sampling_interval=1.000000", "wave_interval=2.000000", "tau=4.000000", "w=2.000000",
+            "b=3.000000", "loss=0.500000", wave_line,
+        ))
+
+    @staticmethod
+    def _query(result):
+        client = Sampler()
+        client.communicate = lambda command, executor=None: result
+        return client.query()
+
+    def _assert_non_finite_failure(self, result, field):
+        self.assertFalse(result.success)
+        self.assertEqual(result.message, "sampling_result_not_finite")
+        self.assertEqual(result.error_category, "state")
+        self.assertTrue(result.retryable)
+        self.assertEqual(result.invalid_field, field)
+        self.assertEqual(result.wave, [])
+        self.assertEqual(result.time_line, [])
+        self.assertEqual(result.estimate, [])
+        self.assertEqual(result.v0, 0.0)
+        self.assertEqual(result.v_inf, 0.0)
 
 
 class MyTestCase(unittest.TestCase):

@@ -22,6 +22,7 @@ class Result:
         "instant_ai_alignment_failed": "Instant AI波形对齐失败",
         "instant_ai_waveform_count_insufficient": "Instant AI完整波形数量不足",
         "fit_not_identifiable": "拟合窗口不足以辨识tau",
+        "sampling_result_not_finite": "采样结果包含无效数值",
         "waveform_processing_mode_mismatch": "波形处理模式不一致",
         "user_cancelled": "用户已取消",
 
@@ -111,6 +112,9 @@ class Result:
         self.w = 0.0
         self.b = 0.0
         self.loss = 0.0
+        self.maximum = 0.0
+        self.minimum = 0.0
+        self.invalid_field = ''
 
         self.v0 = 0.0
         self.v_inf = 0.0

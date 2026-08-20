@@ -1,4 +1,5 @@
 import os
+import math
 import shutil
 import sys
 import threading
@@ -6,6 +7,7 @@ from pathlib import Path
 
 from . import Process
 from . import Result
+from .protocol import parse_assignments, ProtocolError
 
 
 _SOURCE_ROOT = Path(os.path.realpath(os.path.abspath(__file__))).parent.parent
@@ -97,7 +99,16 @@ class Sampler:
             executor.write_line(command)
             lines = executor.read_until('EOF')
             if lines:
-                exec(lines, result.__dict__)
+                known_types = {field: type(value) for field, value in result.__dict__.items()}
+                assignments = parse_assignments(lines, known_types=known_types)
+                if "wave" in assignments:
+                    for value in assignments["wave"]:
+                        if type(value) is not float:
+                            raise ProtocolError("unexpected field type", lines, field_name="wave")
+                for field, value in assignments.items():
+                    setattr(result, field, value)
+        except ProtocolError as error:
+            raise self.Error(str(error))
         except Exception as e:
             result.error = True
             result.message = str(e)
@@ -168,10 +179,34 @@ class Sampler:
 
     def query(self) -> Result:
         result = self.communicate("to_query")
+        if result.success:
+            invalid_field = self._first_non_finite_field(result)
+            if invalid_field:
+                result.success = False
+                result.message = "sampling_result_not_finite"
+                result.error_category = "state"
+                result.retryable = True
+                result.invalid_field = invalid_field
+                result.wave = []
+                result.time_line = []
+                result.estimate = []
+                result.v0 = 0.0
+                result.v_inf = 0.0
+                return result
         result.process()
         if not result.success and result.message == "success":
             result.message = "error_undefined"
         return result
+
+    @staticmethod
+    def _first_non_finite_field(result: Result):
+        for field in ("maximum", "minimum", "sampling_interval", "wave_interval", "tau", "w", "b", "loss"):
+            if not math.isfinite(getattr(result, field)):
+                return field
+        for index, value in enumerate(result.wave):
+            if not math.isfinite(value):
+                return "wave[{}]".format(index)
+        return ""
 
     class Error(RuntimeError):
         pass
