@@ -68,6 +68,9 @@ void test_processor_transaction() {
     for (double value : non_finite_values) {
         assert_non_finite_result_is_rejected(&Result::SamplingResult::maximum, value);
         assert_non_finite_result_is_rejected(&Result::SamplingResult::minimum, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_maximum, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_minimum, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::v_inf, value);
         assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::interval, value);
         assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::tau, value);
         assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::w, value);
@@ -108,6 +111,26 @@ void test_processor_transaction() {
     preserved_error.maximum = std::numeric_limits<double>::infinity();
     assert(!Commander::Processor::validate_finite_result(preserved_config, preserved_error));
     assert(preserved_error.error_code == Error::FIT_NOT_IDENTIFIABLE);
+
+    Result::SamplingResult invalid_voltage(false);
+    invalid_voltage.v_inf = std::numeric_limits<double>::infinity();
+    invalid_voltage.v_inf_valid = true;
+    assert(!Commander::Processor::validate_finite_result(preserved_config, invalid_voltage));
+    assert(invalid_voltage.error_code == Error::SUCCESS);
+    assert(!invalid_voltage.v_inf_valid);
+    assert(invalid_voltage.v_inf == 0.0);
+
+    Config::SamplingConfig failed_fit_config;
+    failed_fit_config.auto_mode = false;
+    assert(failed_fit_config.update(1, 50.0, 0.0, 100, 10.0, "independent_cycle"));
+    Result::SamplingResult failed_fit(false);
+    failed_fit.resultWave.assign(static_cast<std::size_t>(failed_fit_config.valid_length), 1.0);
+    failed_fit.v_inf = 2.0;
+    failed_fit.v_inf_valid = true;
+    assert(!Commander::Processor::estimate(failed_fit_config, failed_fit));
+    assert(failed_fit.error_code == Error::FIT_NOT_IDENTIFIABLE);
+    assert(failed_fit.v_inf == 2.0);
+    assert(failed_fit.v_inf_valid);
 
     Global::config.dump_file_path = "unchanged-config";
     Global::result.totalSamplingBuffer.assign(1, 123.0);

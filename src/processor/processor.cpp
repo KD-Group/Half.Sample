@@ -12,6 +12,17 @@ namespace Processor {
 
 namespace {
 
+bool record_voltage(Result::SamplingResult& result, double voltage) {
+    if (std::isfinite(voltage) && voltage > 0.0) {
+        result.v_inf = voltage;
+        result.v_inf_valid = true;
+        return true;
+    }
+    result.v_inf = 0.0;
+    result.v_inf_valid = false;
+    return false;
+}
+
 bool fit_is_identifiable(const Waveform& wave, const Estimate::EstimatedResult& estimate) {
     if (!wave.values || wave.values->size() < 2 ||
         !std::isfinite(wave.interval) || wave.interval <= 0.0 ||
@@ -37,11 +48,18 @@ bool fit_is_identifiable(const Waveform& wave, const Estimate::EstimatedResult& 
 } // namespace
 
 bool validate_finite_result(const Config::SamplingConfig& config, Result::SamplingResult& result) {
-    if (!result.success)
+    if (!result.success) {
+        if (!result.v_inf_valid || !std::isfinite(result.v_inf) || result.v_inf <= 0.0) {
+            result.v_inf = 0.0;
+            result.v_inf_valid = false;
+        }
         return false;
+    }
 
     const Estimate::EstimatedResult& estimate = result.estimate;
     const bool finite_scalars = std::isfinite(result.maximum) && std::isfinite(result.minimum) &&
+                                std::isfinite(result.cycle_maximum) && std::isfinite(result.cycle_minimum) &&
+                                std::isfinite(result.v_inf) &&
                                 std::isfinite(config.sampling_interval) &&
                                 std::isfinite(estimate.interval) && std::isfinite(estimate.tau) &&
                                 std::isfinite(estimate.w) && std::isfinite(estimate.b) &&
@@ -57,11 +75,17 @@ bool validate_finite_result(const Config::SamplingConfig& config, Result::Sampli
     result.error_code = Error::SAMPLING_RESULT_NOT_FINITE;
     result.maximum = 0.0;
     result.minimum = 0.0;
+    result.cycle_maximum = 0.0;
+    result.cycle_minimum = 0.0;
+    result.v_inf = 0.0;
+    result.v_inf_valid = false;
     result.estimate = Estimate::EstimatedResult();
     return false;
 }
 
 bool align(const Config::SamplingConfig& config, Result::SamplingResult& result) {
+    result.v_inf = 0.0;
+    result.v_inf_valid = false;
     if (config.is_instant() && result.instant_ai_format_version >= 2) {
         bool found_valid_reading = false;
         for (const auto& reading : result.instant_ai_readings) {
@@ -89,7 +113,10 @@ bool align(const Config::SamplingConfig& config, Result::SamplingResult& result)
         result.minimum = *std::min_element(result.totalSamplingBuffer.begin(), result.totalSamplingBuffer.end());
     }
 
-    result.v_inf = result.maximum - result.minimum;
+    if (!record_voltage(result, result.maximum - result.minimum)) {
+        result.error_code = Error::VOLTAGE_NOT_ENOUGH;
+        return false;
+    }
     if (result.v_inf < Constant::MinVoltageAmplitude) {
         result.error_code = Error::VOLTAGE_NOT_ENOUGH;
         return false;
@@ -206,7 +233,10 @@ bool summation(const Config::SamplingConfig& config, Result::SamplingResult& res
         }
         result.cycle_maximum = maximum_sum / static_cast<double>(config.number_of_waveforms);
         result.cycle_minimum = minimum_sum / static_cast<double>(config.number_of_waveforms);
-        result.v_inf = result.cycle_maximum - result.cycle_minimum;
+        if (!record_voltage(result, result.cycle_maximum - result.cycle_minimum)) {
+            result.error_code = Error::SAMPLING_RESULT_NOT_FINITE;
+            return false;
+        }
 
         for (int point = 0; point < config.valid_length; ++point) {
             double sum = 0.0;
@@ -389,7 +419,7 @@ bool estimate(const Config::SamplingConfig& config, Result::SamplingResult& resu
         }
     }
     if (config.is_instant() || config.waveform_processing_mode != "independent_cycle")
-        result.v_inf = result.estimate.b;
+        record_voltage(result, result.estimate.b);
     return true;
 }
 

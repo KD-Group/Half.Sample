@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -72,6 +73,17 @@ void test_align_keeps_voltage_when_amplitude_is_below_threshold() {
     assert(!Commander::Processor::align(config, result));
     assert(result.error_code == Error::VOLTAGE_NOT_ENOUGH);
     assert(std::fabs(result.v_inf - 0.095214844) < 1e-12);
+    assert(result.v_inf_valid);
+}
+
+void test_align_rejects_non_finite_voltage_as_unreported() {
+    Config::SamplingConfig config;
+    Result::SamplingResult result(false);
+    result.totalSamplingBuffer = {0.0, std::numeric_limits<double>::infinity()};
+
+    assert(!Commander::Processor::align(config, result));
+    assert(!result.v_inf_valid);
+    assert(result.v_inf == 0.0);
 }
 
 void test_independent_cycle_rejects_long_period() {
@@ -214,6 +226,7 @@ void test_independent_cycle_summation_keeps_acquisition_batches_independent() {
     assert(std::fabs(result.cycle_maximum - 8.0) < 1e-9);
     assert(std::fabs(result.cycle_minimum - 5.0) < 1e-9);
     assert(std::fabs(result.v_inf - 3.0) < 1e-9);
+    assert(result.v_inf_valid);
 }
 
 void test_independent_cycle_platform_windows_do_not_cross_batch_start() {

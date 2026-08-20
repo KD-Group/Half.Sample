@@ -330,6 +330,17 @@ class HeaderLayoutTest(unittest.TestCase):
         )
         self.assertLess(offline.index("Processor::validate_finite_result"), offline.index("publish_process_result"))
 
+    def test_sampling_query_reports_explicit_voltage_validity(self):
+        result_header = compact_cpp(
+            (REPO_ROOT / "src/result/sampling_result.hpp").read_text(encoding="utf-8")
+        )
+        measure = compact_cpp(
+            (REPO_ROOT / "src/commander/measure.cpp").read_text(encoding="utf-8")
+        )
+
+        self.assertIn("doublecycle_maximum{},cycle_minimum{},v_inf{};boolv_inf_valid{};", result_header)
+        self.assertIn("boolv_inf_valid=Global::result.v_inf_valid;Base::variable(v_inf_valid);", measure)
+
 
 if __name__ == "__main__":
     unittest.main()

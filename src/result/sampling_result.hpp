@@ -99,6 +99,7 @@ struct SamplingResult {
 
     double maximum{}, minimum{};
     double cycle_maximum{}, cycle_minimum{}, v_inf{};
+    bool v_inf_valid{};
     Estimate::EstimatedResult estimate;
 
     bool success{};

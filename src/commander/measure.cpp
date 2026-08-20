@@ -91,6 +91,7 @@ void publish_process_result(Result::SamplingResult& destination, Result::Samplin
     destination.cycle_maximum = source.cycle_maximum;
     destination.cycle_minimum = source.cycle_minimum;
     destination.v_inf = source.v_inf;
+    destination.v_inf_valid = source.v_inf_valid;
     destination.estimate = std::move(source.estimate);
     destination.success = source.success;
     destination.error_code = source.error_code;
@@ -112,6 +113,7 @@ void publish_process_failure(Error::Code error_code,
         result.cycle_maximum = partial_result->cycle_maximum;
         result.cycle_minimum = partial_result->cycle_minimum;
         result.v_inf = partial_result->v_inf;
+        result.v_inf_valid = partial_result->v_inf_valid;
     }
     result.cancelled = false;
     result.success = false;
@@ -264,6 +266,8 @@ void to_query() {
 
     double v_inf = Global::result.v_inf;
     Base::variable(v_inf);
+    bool v_inf_valid = Global::result.v_inf_valid;
+    Base::variable(v_inf_valid);
 
     if (success) {
         double maximum = Global::result.maximum;
@@ -465,6 +469,7 @@ void clear_measure_data() {
     Global::result.cycle_maximum = 0.0;
     Global::result.cycle_minimum = 0.0;
     Global::result.v_inf = 0.0;
+    Global::result.v_inf_valid = false;
     Global::result.estimate = Estimate::EstimatedResult();
     if (Global::config.is_instant()) {
         Global::result.totalSamplingBuffer =
