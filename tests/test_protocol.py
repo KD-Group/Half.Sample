@@ -70,6 +70,22 @@ def test_known_types_accepts_type_or_tuple_and_checks_exact_type():
     assert caught.value.field_name == "count"
 
 
+@pytest.mark.parametrize("token, expected", [("True", True), ("False", False)])
+def test_known_bool_field_accepts_only_bool_literals(token, expected):
+    assert parse_assignments("v_inf_valid = " + token, {"v_inf_valid": bool}) == {"v_inf_valid": expected}
+
+
+def test_known_bool_field_rejects_integer_value():
+    with pytest.raises(ProtocolError):
+        parse_assignments("v_inf_valid=1", {"v_inf_valid": bool})
+
+
+@pytest.mark.parametrize("known_types", [None, {"_v_inf_reported": bool}])
+def test_rejects_private_response_fields_even_when_known(known_types):
+    with pytest.raises(ProtocolError):
+        parse_assignments("_v_inf_reported=True", known_types)
+
+
 def test_protocol_error_has_bounded_diagnostics():
     response = "good=1\nfield=" + ("x" * 2000) + "\nlast=2"
     with pytest.raises(ProtocolError) as caught:
