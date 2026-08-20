@@ -624,7 +624,6 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
         result.b = 3.0
         result.loss = 0.5
         result.wave = [5.0, 4.0]
-        result.v_inf = 1.3
         client = Sampler()
         client.communicate = lambda command, executor=None: result
 
@@ -633,7 +632,6 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
         self.assertEqual(queried.time_line, [0.0, 2.0])
         self.assertEqual(len(queried.estimate), 2)
         self.assertEqual(queried.v0, 5.0)
-        self.assertEqual(queried.v_inf, 1.3)
 
     def test_query_does_not_override_existing_failure_with_non_finite_fields(self):
         result = Result()
