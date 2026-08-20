@@ -36,6 +36,35 @@ bool fit_is_identifiable(const Waveform& wave, const Estimate::EstimatedResult& 
 
 } // namespace
 
+bool validate_finite_result(const Config::SamplingConfig& config, Result::SamplingResult& result) {
+    if (!result.success)
+        return false;
+
+    const Estimate::EstimatedResult& estimate = result.estimate;
+    const bool finite_scalars = std::isfinite(result.maximum) && std::isfinite(result.minimum) &&
+                                std::isfinite(result.cycle_maximum) && std::isfinite(result.cycle_minimum) &&
+                                std::isfinite(result.v_inf) && std::isfinite(config.sampling_interval) &&
+                                std::isfinite(estimate.interval) && std::isfinite(estimate.tau) &&
+                                std::isfinite(estimate.w) && std::isfinite(estimate.b) &&
+                                std::isfinite(estimate.loss);
+    const bool finite_wave = !estimate.y ||
+                             std::all_of(estimate.y->begin(), estimate.y->end(), [](double value) {
+                                 return std::isfinite(value);
+                             });
+    if (finite_scalars && finite_wave)
+        return true;
+
+    result.success = false;
+    result.error_code = Error::SAMPLING_RESULT_NOT_FINITE;
+    result.maximum = 0.0;
+    result.minimum = 0.0;
+    result.cycle_maximum = 0.0;
+    result.cycle_minimum = 0.0;
+    result.v_inf = 0.0;
+    result.estimate = Estimate::EstimatedResult();
+    return false;
+}
+
 bool align(const Config::SamplingConfig& config, Result::SamplingResult& result) {
     if (config.is_instant() && result.instant_ai_format_version >= 2) {
         bool found_valid_reading = false;

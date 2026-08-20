@@ -32,6 +32,8 @@ std::string to_string(Code error_code) {
         return "instant_ai_waveform_count_insufficient";
     case FIT_NOT_IDENTIFIABLE:
         return "fit_not_identifiable";
+    case SAMPLING_RESULT_NOT_FINITE:
+        return "sampling_result_not_finite";
     case USER_CANCELLED:
         return "user_cancelled";
 
@@ -144,6 +146,8 @@ std::string category(Code error_code) {
         return "waveform_count";
     case FIT_NOT_IDENTIFIABLE:
         return "fit";
+    case SAMPLING_RESULT_NOT_FINITE:
+        return "state";
     case COMMAND_NOT_FOUND:
         return "command";
     case SAMPLER_NOT_FOUND:
@@ -175,6 +179,7 @@ bool retryable(Code error_code) {
     case INSTANT_AI_SCHEDULE_TIMEOUT:
     case INSTANT_AI_ALIGNMENT_FAILED:
     case INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT:
+    case SAMPLING_RESULT_NOT_FINITE:
         return true;
     default:
         return true;

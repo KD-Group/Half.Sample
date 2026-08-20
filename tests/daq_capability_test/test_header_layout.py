@@ -312,6 +312,24 @@ class HeaderLayoutTest(unittest.TestCase):
         self.assertLess(failure, release)
         self.assertLess(release, close)
 
+    def test_measurement_and_offline_processing_validate_before_success_publication(self):
+        source = compact_cpp(
+            (REPO_ROOT / "src/commander/measure.cpp").read_text(encoding="utf-8")
+        )
+        online = source.split("voidmeasure()", 1)[1].split("#ifdef_WIN32", 1)[0]
+        offline = source.split("voidto_process()", 1)[1].split("voidclear_measure_data()", 1)[0]
+
+        self.assertIn(
+            "Global::result.success=true;success=Processor::validate_finite_result(Global::config,Global::result)",
+            online,
+        )
+        self.assertLess(online.index("Processor::estimate"), online.index("Processor::validate_finite_result"))
+        self.assertIn(
+            "pending_result.success=true;success=Processor::validate_finite_result(pending_config,pending_result)",
+            offline,
+        )
+        self.assertLess(offline.index("Processor::validate_finite_result"), offline.index("publish_process_result"))
+
 
 if __name__ == "__main__":
     unittest.main()

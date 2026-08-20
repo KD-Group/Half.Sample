@@ -13,6 +13,8 @@ bool summation(const Config::SamplingConfig& config, Result::SamplingResult& res
 
 bool estimate(const Config::SamplingConfig& config, Result::SamplingResult& result);
 
+bool validate_finite_result(const Config::SamplingConfig& config, Result::SamplingResult& result);
+
 } // namespace Processor
 } // namespace Commander
 

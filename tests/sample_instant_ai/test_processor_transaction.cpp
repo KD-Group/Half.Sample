@@ -7,9 +7,103 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
+namespace {
+
+void assert_non_finite_result_is_rejected(double Result::SamplingResult::* field, double value) {
+    Config::SamplingConfig config;
+    Result::SamplingResult result(false);
+    result.success = true;
+    result.maximum = 1.0;
+    result.minimum = 0.0;
+    result.cycle_maximum = 1.0;
+    result.cycle_minimum = 0.0;
+    result.v_inf = 1.0;
+    result.estimate.interval = 0.1;
+    result.estimate.tau = 1.0;
+    result.estimate.w = 1.0;
+    result.estimate.b = 1.0;
+    result.estimate.loss = 0.0;
+    result.estimate.y.reset(new Vector(1, 1.0));
+    result.*field = value;
+
+    assert(!Commander::Processor::validate_finite_result(config, result));
+    assert(!result.success);
+    assert(result.error_code == Error::SAMPLING_RESULT_NOT_FINITE);
+    assert(!result.estimate.y);
+}
+
+void assert_non_finite_estimate_is_rejected(double Estimate::EstimatedResult::* field, double value) {
+    Config::SamplingConfig config;
+    Result::SamplingResult result(false);
+    result.success = true;
+    result.maximum = 1.0;
+    result.minimum = 0.0;
+    result.cycle_maximum = 1.0;
+    result.cycle_minimum = 0.0;
+    result.v_inf = 1.0;
+    result.estimate.interval = 0.1;
+    result.estimate.tau = 1.0;
+    result.estimate.w = 1.0;
+    result.estimate.b = 1.0;
+    result.estimate.loss = 0.0;
+    result.estimate.y.reset(new Vector(1, 1.0));
+    result.estimate.*field = value;
+
+    assert(!Commander::Processor::validate_finite_result(config, result));
+    assert(result.error_code == Error::SAMPLING_RESULT_NOT_FINITE);
+}
+
+} // namespace
+
 void test_processor_transaction() {
+    assert(Error::to_string(Error::SAMPLING_RESULT_NOT_FINITE) == "sampling_result_not_finite");
+    assert(Error::category(Error::SAMPLING_RESULT_NOT_FINITE) == "state");
+    assert(Error::retryable(Error::SAMPLING_RESULT_NOT_FINITE));
+    assert(!Error::retryable(Error::FIT_NOT_IDENTIFIABLE));
+
+    const double non_finite_values[] = {
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity()
+    };
+    for (double value : non_finite_values) {
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::maximum, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::minimum, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_maximum, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_minimum, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::v_inf, value);
+        assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::interval, value);
+        assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::tau, value);
+        assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::w, value);
+        assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::b, value);
+        assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::loss, value);
+
+        Config::SamplingConfig config;
+        config.sampling_interval = value;
+        Result::SamplingResult result(false);
+        result.success = true;
+        result.estimate.y.reset(new Vector(1, 1.0));
+        assert(!Commander::Processor::validate_finite_result(config, result));
+
+        config.sampling_interval = 0.1;
+        Result::SamplingResult wave_result(false);
+        wave_result.success = true;
+        wave_result.estimate.y.reset(new Vector(2, 1.0));
+        (*wave_result.estimate.y)[1] = value;
+        assert(!Commander::Processor::validate_finite_result(config, wave_result));
+    }
+
+    Config::SamplingConfig preserved_config;
+    Result::SamplingResult preserved_error(false);
+    preserved_error.success = false;
+    preserved_error.error_code = Error::FIT_NOT_IDENTIFIABLE;
+    preserved_error.maximum = std::numeric_limits<double>::infinity();
+    assert(!Commander::Processor::validate_finite_result(preserved_config, preserved_error));
+    assert(preserved_error.error_code == Error::FIT_NOT_IDENTIFIABLE);
+
     Global::config.dump_file_path = "unchanged-config";
     Global::result.totalSamplingBuffer.assign(1, 123.0);
     Global::result.estimate.interval = 456.0;

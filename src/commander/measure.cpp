@@ -118,6 +118,10 @@ void measure() {
         if (success) success = Processor::align(Global::config, Global::result);
         if (success) success = Processor::summation(Global::config, Global::result);
         if (success) success = Processor::estimate(Global::config, Global::result);
+        if (success) {
+            Global::result.success = true;
+            success = Processor::validate_finite_result(Global::config, Global::result);
+        }
         if (success || !independent_mode || attempts >= 3 ||
             Global::result.error_code != Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT)
             break;
@@ -388,6 +392,12 @@ void to_process() {
         success = Processor::estimate(pending_config, pending_result);
         if (!success)
             break;
+
+        pending_result.success = true;
+        success = Processor::validate_finite_result(pending_config, pending_result);
+        if (!success)
+            break;
+
     } while (false);
 
     pending_result.success = success;
