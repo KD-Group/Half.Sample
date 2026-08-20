@@ -1,12 +1,27 @@
 #include "../../src/result/sampling_result.hpp"
+#include "../../src/commander/base.hpp"
 
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <sstream>
 #include <type_traits>
 
 void test_sampling_progress() {
+    std::ostringstream output;
+    std::streambuf* original_output = std::cout.rdbuf(output.rdbuf());
+    Commander::Base::line("message", std::string("plain \"quote\" \\ slash\rline\nnext\ttab"));
+    std::cout.rdbuf(original_output);
+    assert(output.str() == "message = \"plain \\\"quote\\\" \\\\ slash\\rline\\nnext\\ttab\"\n");
+
     Result::SamplingProgress progress;
+    assert(Result::SamplingProgress::to_milliseconds(std::numeric_limits<double>::quiet_NaN()) == 0);
+    assert(Result::SamplingProgress::to_milliseconds(-1.0) == 0);
+    assert(Result::SamplingProgress::to_milliseconds(std::numeric_limits<double>::infinity()) ==
+           std::numeric_limits<long long>::max());
+    assert(Result::SamplingProgress::to_milliseconds(std::numeric_limits<double>::max()) ==
+           std::numeric_limits<long long>::max());
+    assert(Result::SamplingProgress::to_milliseconds(1.25) == 1250);
     progress.reset(40.0, 2);
     assert(progress.planned_milliseconds.load() == 40000);
     assert(progress.elapsed_milliseconds.load() == 0);

@@ -7,7 +7,20 @@ namespace Base {
 // output various values to stdout
 void output(bool value) { printf(value ? "True" : "False"); }
 
-void output(const std::string& value) { std::cout << "\"" << value << "\""; }
+void output(const std::string& value) {
+    std::cout << "\"";
+    for (const char character : value) {
+        switch (character) {
+        case '"': std::cout << "\\\""; break;
+        case '\\': std::cout << "\\\\"; break;
+        case '\r': std::cout << "\\r"; break;
+        case '\n': std::cout << "\\n"; break;
+        case '\t': std::cout << "\\t"; break;
+        default: std::cout << character; break;
+        }
+    }
+    std::cout << "\"";
+}
 
 void output(int value) { printf("%d", value); }
 
