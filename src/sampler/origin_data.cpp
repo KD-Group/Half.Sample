@@ -149,6 +149,9 @@ void reset_loaded_result(Result::SamplingResult& result, const Config::SamplingC
     result.error_code = Error::SUCCESS;
     result.maximum = 0.0;
     result.minimum = 0.0;
+    result.cycle_maximum = 0.0;
+    result.cycle_minimum = 0.0;
+    result.v_inf = 0.0;
     result.estimate = Estimate::EstimatedResult();
 }
 
@@ -186,13 +189,29 @@ bool fail_dump(Result::SamplingResult& result, Error::Code code = Error::FILE_NO
     return false;
 }
 
+std::size_t buffered_capacity(const Config::SamplingConfig& config) {
+    if (config.sampling_length_per_sample <= 0 || config.sampling_time <= 0) return 0;
+    const std::size_t per_sample = static_cast<std::size_t>(config.sampling_length_per_sample);
+    const std::size_t times = static_cast<std::size_t>(config.sampling_time);
+    const std::size_t limit = static_cast<std::size_t>(Constant::MaxBufferSize);
+    return times <= limit / per_sample ? per_sample * times : limit;
+}
+
+std::size_t buffered_dump_count(const Config::SamplingConfig& config) {
+    if (config.waveform_processing_mode == "independent_cycle") {
+        return buffered_capacity(config);
+    }
+    return config.sampling_length_per_sample > 0
+        ? static_cast<std::size_t>(config.sampling_length_per_sample)
+        : 0;
+}
+
 bool valid_dump_source(const Config::SamplingConfig& config, const Result::SamplingResult& result) {
     if (!config.is_instant()) {
-        if (config.sampling_length_per_sample <= 0 ||
-            result.totalSamplingBuffer.size() < static_cast<std::size_t>(config.sampling_length_per_sample))
-            return false;
-        for (int i = 0; i < config.sampling_length_per_sample; ++i) {
-            if (!std::isfinite(result.totalSamplingBuffer[static_cast<std::size_t>(i)])) return false;
+        const std::size_t count = buffered_dump_count(config);
+        if (count == 0 || result.totalSamplingBuffer.size() < count) return false;
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!std::isfinite(result.totalSamplingBuffer[i])) return false;
         }
         return true;
     }
@@ -405,10 +424,13 @@ bool load_v1(std::istream& input, Config::SamplingConfig& config, Result::Sampli
 bool load_buffered(std::istream& input, Config::SamplingConfig& config, Result::SamplingResult& result) {
     if (config.sampling_length_per_sample <= 0 || config.sampling_time <= 0) return false;
     const std::size_t per_sample = static_cast<std::size_t>(config.sampling_length_per_sample);
-    const std::size_t times = static_cast<std::size_t>(config.sampling_time);
     if (per_sample > static_cast<std::size_t>(Constant::MaxSamplingPoints)) return false;
-    const std::size_t legacy_limit = static_cast<std::size_t>(Constant::MaxBufferSize);
-    const std::size_t capacity = times <= legacy_limit / per_sample ? per_sample * times : legacy_limit;
+    const std::size_t capacity = buffered_capacity(config);
+    const bool independent = config.waveform_processing_mode == "independent_cycle";
+    const std::size_t confirmation_points = independent
+        ? static_cast<std::size_t>(std::max(32, static_cast<int>(std::llround(config.waveform_length * 0.00005))))
+        : 0u;
+    const std::size_t input_limit = independent ? capacity + confirmation_points : per_sample;
     std::vector<double> values;
     values.reserve(std::min(capacity, static_cast<std::size_t>(4096)));
     std::string token;
@@ -417,15 +439,16 @@ bool load_buffered(std::istream& input, Config::SamplingConfig& config, Result::
         const ReadStatus token_status = read_bounded_field(
             input, token, ',', max_buffered_token_length, ended_by_delimiter);
         if (token_status == ReadStatus::End) return false;
-        if (token_status != ReadStatus::Record || values.size() >= per_sample) return false;
+        if (token_status != ReadStatus::Record || values.size() >= input_limit) return false;
         double value = 0.0;
         if (!parse_double(trim_space(token), value)) return false;
         values.push_back(value);
         if (!ended_by_delimiter) break;
     }
-    // The historical Buffered writer stores exactly one configured acquisition block,
-    // even when the in-memory buffer has room for several RunOnce calls.
-    if (values.size() != per_sample) return false;
+    // Historical buffered files contain one acquisition block.  Independent-cycle
+    // files may contain every RunOnce block so replay preserves batch boundaries.
+    if (values.size() != per_sample &&
+        (!independent || (values.size() != capacity && values.size() != input_limit))) return false;
     values.resize(capacity, 0.0);
 
     config.acquisition_mode = Config::AcquisitionMode::Buffered;
@@ -470,9 +493,10 @@ bool Sampler::dump_origin_data(const Config::SamplingConfig& config, Result::Sam
             output << ',' << (reading.read_success ? 1 : 0) << ',' << reading.read_error_code << '\n';
         }
     } else {
-        for (int i = 0; i < config.sampling_length_per_sample; ++i) {
-            write_number(output, result.totalSamplingBuffer[static_cast<std::size_t>(i)]);
-            if (i + 1 < config.sampling_length_per_sample) output << ',';
+        const std::size_t count = buffered_dump_count(config);
+        for (std::size_t i = 0; i < count; ++i) {
+            write_number(output, result.totalSamplingBuffer[i]);
+            if (i + 1 < count) output << ',';
         }
     }
     output.flush();

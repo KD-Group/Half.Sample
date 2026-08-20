@@ -19,9 +19,19 @@ struct IndependentCycleResult {
     int rejected_baseline_cycles = 0;
     int rejected_shape_cycles = 0;
     std::vector<std::vector<double>> cycles;
+    std::vector<double> cycle_maximums;
+    std::vector<double> cycle_minimums;
+    std::vector<double> voltage_amplitudes;
 };
 
 IndependentCycleResult extract_independent_cycles(const std::vector<double>& samples,
+                                                  int sampling_frequency,
+                                                  double emitting_frequency,
+                                                  int requested_waveforms);
+
+IndependentCycleResult extract_independent_cycles(const std::vector<double>& samples,
+                                                  std::size_t begin,
+                                                  std::size_t end,
                                                   int sampling_frequency,
                                                   double emitting_frequency,
                                                   int requested_waveforms);

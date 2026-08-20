@@ -93,9 +93,12 @@ struct SamplingResult {
     int rejected_baseline_cycles{};
     int rejected_shape_cycles{};
     std::vector<std::vector<double>> independent_cycle_accumulator;
+    std::vector<double> independent_cycle_maximum_accumulator;
+    std::vector<double> independent_cycle_minimum_accumulator;
     bool cancelled{};
 
     double maximum{}, minimum{};
+    double cycle_maximum{}, cycle_minimum{}, v_inf{};
     Estimate::EstimatedResult estimate;
 
     bool success{};

@@ -118,6 +118,9 @@ class Result:
 
         self.v0 = 0.0
         self.v_inf = 0.0
+        self._v_inf_reported = False
+        self.cycle_maximum = 0.0
+        self.cycle_minimum = 0.0
 
         self.mock_tau = 0.0
         self.mock_v0 = 0.0
@@ -138,7 +141,9 @@ class Result:
             tau, w, b = self.tau, self.w, self.b
             self.estimate = [w * math.exp(t / -tau) + b for t in self.time_line]
 
-            self.v0, self.v_inf = b + w, b
+            self.v0 = b + w
+            if not self._v_inf_reported and self.v_inf == 0.0:
+                self.v_inf = b
 
     @property
     def chinese_message(self) -> str:

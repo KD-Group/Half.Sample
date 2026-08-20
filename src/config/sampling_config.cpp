@@ -10,7 +10,8 @@ namespace Config {
 
 bool SamplingConfig::update(int waveforms, double frequency, double instant_threshold, int instant_target_points,
                             double instant_max_reliable_polling_hz, const std::string& processing_mode) {
-    if (waveforms <= 0 || frequency <= 0 || instant_threshold < 0) {
+    if (waveforms <= 0 || !std::isfinite(frequency) || frequency <= 0 ||
+        !std::isfinite(instant_threshold) || instant_threshold < 0) {
         return false;
     }
 
@@ -31,6 +32,12 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
     double instant_polling_frequency = 0.0;
     double instant_planned_duration_seconds = 0.0;
     std::size_t instant_planned_readings = 0;
+    int buffered_sampling_frequency = 0;
+    int buffered_waveform_length = 0;
+    int buffered_confirmation_points = 0;
+    int buffered_sampling_length = 0;
+    int buffered_waveforms_per_sample = 0;
+    int buffered_sampling_time = 0;
 
     if (requested_mode == AcquisitionMode::Instant) {
         instant_polling_frequency = std::min(frequency * instant_target_points, instant_max_reliable_polling_hz);
@@ -50,6 +57,39 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
         if (reconstruction_rows > Constant::MaxInstantAiReconstructionCells / instant_planned_readings) {
             return false;
         }
+    } else {
+        buffered_sampling_frequency = frequency >= Constant::HighSpeedSamplingThreshold
+            ? Constant::MaxSamplingFrequency
+            : Constant::MinSamplingFrequency;
+        const double waveform_length_value = buffered_sampling_frequency / frequency;
+        if (!std::isfinite(waveform_length_value) || waveform_length_value < 1.0 ||
+            waveform_length_value > INT_MAX) {
+            return false;
+        }
+        buffered_waveform_length = static_cast<int>(waveform_length_value);
+        const long long requested_sampling_points =
+            static_cast<long long>(buffered_waveform_length) *
+                (static_cast<long long>(waveforms) + 1LL);
+        buffered_sampling_length = static_cast<int>(std::min(
+            static_cast<long long>(Constant::MaxSamplingPoints), requested_sampling_points));
+        if (processing_mode == "independent_cycle") {
+            const int complete_periods =
+                buffered_sampling_length / buffered_waveform_length;
+            buffered_waveforms_per_sample = complete_periods - 1;
+            if (buffered_waveforms_per_sample < 1) return false;
+        } else {
+            buffered_waveforms_per_sample = std::max(
+                1, buffered_sampling_length / buffered_waveform_length - 1);
+        }
+        const long long sampling_time_value =
+            (static_cast<long long>(waveforms) + buffered_waveforms_per_sample - 1LL) /
+            buffered_waveforms_per_sample;
+        if (sampling_time_value < 1 || sampling_time_value > INT_MAX ||
+            static_cast<long long>(buffered_sampling_length) * sampling_time_value >
+                Constant::MaxBufferSize) {
+            return false;
+        }
+        buffered_sampling_time = static_cast<int>(sampling_time_value);
     }
 
     number_of_waveforms = waveforms;
@@ -81,11 +121,7 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
         return true;
     }
 
-    if (frequency >= Constant::HighSpeedSamplingThreshold) {
-        sampling_frequency = Constant::MaxSamplingFrequency;
-    } else {
-        sampling_frequency = Constant::MinSamplingFrequency;
-    }
+    sampling_frequency = buffered_sampling_frequency;
 
     // 1. 如果设置的发射频率超过10Hz，采集卡采样频率设置为2e7，否则为1e6
     // 2. 采样间隔为1e6 / 采集卡频率，即当采样频率为2e7的时候，采样间隔为0.05，采样频率为1e6的时候，采样间隔为1
@@ -99,17 +135,13 @@ bool SamplingConfig::update(int waveforms, double frequency, double instant_thre
     Commander::Base::variable(number_of_waveforms);
     sampling_interval = 1e6 / sampling_frequency;
     Commander::Base::variable(sampling_interval);
-    waveform_length = int(sampling_frequency / frequency);
+    waveform_length = buffered_waveform_length;
     Commander::Base::variable(waveform_length);
-    sampling_length_per_sample = std::min(Constant::MaxSamplingPoints, waveform_length * (number_of_waveforms + 1));
+    sampling_length_per_sample = buffered_sampling_length;
     Commander::Base::variable(sampling_length_per_sample);
-    waveforms_per_sample = std::max(1, sampling_length_per_sample / waveform_length - 1);
+    waveforms_per_sample = buffered_waveforms_per_sample;
     Commander::Base::variable(waveforms_per_sample);
-    sampling_time = int(number_of_waveforms / waveforms_per_sample);
-    if (fmod(static_cast<double>(number_of_waveforms), static_cast<double>(waveforms_per_sample)) != 0) {
-        sampling_time++;
-    }
-    sampling_time = std::max(1, sampling_time);
+    sampling_time = buffered_sampling_time;
     Commander::Base::variable(sampling_time);
     int cropped_length = int(Constant::CroppedLength * sampling_frequency / Constant::MaxSamplingFrequency);
     if (waveform_processing_mode == "independent_cycle") {

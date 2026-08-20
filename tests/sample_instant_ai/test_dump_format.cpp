@@ -208,6 +208,40 @@ void test_dump_format() {
     }
 
     {
+        Config::SamplingConfig config;
+        assert(config.update(2, 100.0, 0.0, 100, 10.0,
+                             "independent_cycle"));
+        config.sampling_length_per_sample = 3;
+        config.sampling_time = 2;
+        config.dump_file_path = fixture_path;
+        Result::SamplingResult original(false);
+        original.totalSamplingBuffer = {1, 2, 3, 11, 12, 13};
+
+        assert(Sampler::Sampler::dump_origin_data(config, original));
+
+        Result::SamplingResult replay(false);
+        assert(Sampler::Sampler::load_origin_data(config, replay));
+        assert(replay.totalSamplingBuffer == original.totalSamplingBuffer);
+    }
+
+    {
+        Config::SamplingConfig config;
+        assert(config.update(2, 100.0, 0.0, 100, 10.0,
+                             "independent_cycle"));
+        config.sampling_length_per_sample = 4;
+        config.sampling_time = 1;
+        config.waveform_length = 4;
+        config.dump_file_path = fixture_path;
+        write_text(fixture_path, "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36");
+
+        Result::SamplingResult replay(false);
+        assert(Sampler::Sampler::load_origin_data(config, replay));
+        assert(replay.totalSamplingBuffer.size() == 4);
+        assert(replay.totalSamplingBuffer[0] == 1.0);
+        assert(replay.totalSamplingBuffer[3] == 4.0);
+    }
+
+    {
         write_text(fixture_path, "1,2,3,4,5,6,7,8");
         Config::SamplingConfig config;
         assert(config.update(1, 100.0));

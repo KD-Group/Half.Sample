@@ -89,40 +89,38 @@ bool MockSampler::sample(const Config::SamplingConfig& config, Result::SamplingR
     }
 
     auto buffer = result.totalSamplingBuffer.data();
-
-    for (int i = 0; i < config.number_of_waveforms + 1; i++) {
-        auto current = buffer + config.waveform_length * i;
-
-        const int transition_length = 5;
-        for (int j = 0; j < config.waveform_length; j++) {
-            if (j < transition_length) {
-                current[j] = j * mock_v0 / transition_length;
-            } else if (j < config.waveform_length / 2) {
+    const int transition_length = 5;
+    for (std::size_t i = 0; i < result.totalSamplingBuffer.size(); ++i) {
+        const int point = static_cast<int>(i % static_cast<std::size_t>(config.waveform_length));
+        if (point < transition_length) {
+            buffer[i] = point * mock_v0 / transition_length;
+        } else if (point < config.waveform_length / 2) {
                 double b = mock_v_inf;
                 double w = mock_v0 - b;
-                current[j] = b + w * exp((j - transition_length) * config.sampling_interval / -mock_tau);
+                buffer[i] = b + w * exp((point - transition_length) * config.sampling_interval / -mock_tau);
 
                 if (mock_is_going_down) {
-                    current[j] += w / 3 * exp((config.waveform_length / 2 - j) * config.sampling_interval / -mock_tau);
+                    buffer[i] += w / 3 *
+                                 exp((config.waveform_length / 2 - point) * config.sampling_interval / -mock_tau);
                 }
-            } else if (j < config.waveform_length / 2 + transition_length) {
-                current[j] = (transition_length - (j - config.waveform_length / 2)) * mock_v_inf / transition_length;
-            } else {
-                current[j] = 0;
-            }
+        } else if (point < config.waveform_length / 2 + transition_length) {
+            buffer[i] = (transition_length - (point - config.waveform_length / 2)) *
+                        mock_v_inf / transition_length;
+        } else {
+            buffer[i] = 0;
         }
     }
 
     // random noise
     srand(time(nullptr));
-    for (int i = 0; i < config.sampling_length_per_sample; i++) {
+    for (std::size_t i = 0; i < result.totalSamplingBuffer.size(); ++i) {
         buffer[i] += (rand() / double(RAND_MAX) - 0.5) * mock_noise;
     }
 
     // vertical shift
     const double max_shift_amplitude = -2.5;
     const double shift_amplitude = rand() / double(RAND_MAX) * max_shift_amplitude;
-    for (int i = 0; i < config.sampling_length_per_sample; i++) {
+    for (std::size_t i = 0; i < result.totalSamplingBuffer.size(); ++i) {
         buffer[i] += shift_amplitude;
     }
 

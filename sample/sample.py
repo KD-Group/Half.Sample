@@ -101,6 +101,7 @@ class Sampler:
             if lines:
                 known_types = {field: type(value) for field, value in result.__dict__.items()}
                 assignments = parse_assignments(lines, known_types=known_types)
+                result._v_inf_reported = "v_inf" in assignments
                 if "wave" in assignments:
                     for value in assignments["wave"]:
                         if type(value) is not float:

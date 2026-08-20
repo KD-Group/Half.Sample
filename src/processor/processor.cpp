@@ -89,7 +89,8 @@ bool align(const Config::SamplingConfig& config, Result::SamplingResult& result)
         result.minimum = *std::min_element(result.totalSamplingBuffer.begin(), result.totalSamplingBuffer.end());
     }
 
-    if (result.maximum - result.minimum < Constant::MinVoltageAmplitude) {
+    result.v_inf = result.maximum - result.minimum;
+    if (result.v_inf < Constant::MinVoltageAmplitude) {
         result.error_code = Error::VOLTAGE_NOT_ENOUGH;
         return false;
     }
@@ -152,28 +153,60 @@ bool summation(const Config::SamplingConfig& config, Result::SamplingResult& res
     }
 
     if (config.waveform_processing_mode == "independent_cycle") {
-        const auto independent = extract_independent_cycles(result.totalSamplingBuffer,
-                                                             static_cast<int>(config.sampling_frequency),
-                                                             config.emitting_frequency,
-                                                             config.number_of_waveforms);
         result.requested_waveforms = config.number_of_waveforms;
-        result.complete_waveforms = independent.accepted_waveforms;
-        result.discarded_waveforms += independent.discarded_waveforms;
-        result.rejected_threshold_candidates += independent.rejected_threshold_candidates;
-        result.rejected_short_periods += independent.rejected_short_periods;
-        result.rejected_long_periods += independent.rejected_long_periods;
-        result.rejected_amplitude_cycles += independent.rejected_amplitude_cycles;
-        result.rejected_baseline_cycles += independent.rejected_baseline_cycles;
-        result.rejected_shape_cycles += independent.rejected_shape_cycles;
-        result.independent_batches += 1;
-        result.independent_cycle_accumulator.insert(result.independent_cycle_accumulator.end(),
-                                                    std::make_move_iterator(independent.cycles.begin()),
-                                                    std::make_move_iterator(independent.cycles.end()));
+        const std::size_t block_size = config.sampling_length_per_sample > 0
+            ? static_cast<std::size_t>(config.sampling_length_per_sample)
+            : result.totalSamplingBuffer.size();
+        const std::size_t configured_batches = config.sampling_time > 0
+            ? static_cast<std::size_t>(config.sampling_time)
+            : 1u;
+        for (std::size_t batch = 0; batch < configured_batches; ++batch) {
+            if (result.independent_cycle_accumulator.size() >=
+                static_cast<std::size_t>(config.number_of_waveforms))
+                break;
+            const std::size_t begin = batch * block_size;
+            if (begin >= result.totalSamplingBuffer.size()) break;
+            const std::size_t end = std::min(begin + block_size, result.totalSamplingBuffer.size());
+            const int remaining = config.number_of_waveforms -
+                static_cast<int>(result.independent_cycle_accumulator.size());
+            auto independent = extract_independent_cycles(
+                result.totalSamplingBuffer, begin, end,
+                static_cast<int>(config.sampling_frequency),
+                config.emitting_frequency, remaining);
+            result.discarded_waveforms += independent.discarded_waveforms;
+            result.rejected_threshold_candidates += independent.rejected_threshold_candidates;
+            result.rejected_short_periods += independent.rejected_short_periods;
+            result.rejected_long_periods += independent.rejected_long_periods;
+            result.rejected_amplitude_cycles += independent.rejected_amplitude_cycles;
+            result.rejected_baseline_cycles += independent.rejected_baseline_cycles;
+            result.rejected_shape_cycles += independent.rejected_shape_cycles;
+            result.independent_batches += 1;
+            result.independent_cycle_accumulator.insert(
+                result.independent_cycle_accumulator.end(),
+                std::make_move_iterator(independent.cycles.begin()),
+                std::make_move_iterator(independent.cycles.end()));
+            result.independent_cycle_maximum_accumulator.insert(
+                result.independent_cycle_maximum_accumulator.end(),
+                independent.cycle_maximums.begin(), independent.cycle_maximums.end());
+            result.independent_cycle_minimum_accumulator.insert(
+                result.independent_cycle_minimum_accumulator.end(),
+                independent.cycle_minimums.begin(), independent.cycle_minimums.end());
+        }
         result.complete_waveforms = static_cast<int>(result.independent_cycle_accumulator.size());
         if (result.independent_cycle_accumulator.size() < static_cast<std::size_t>(config.number_of_waveforms)) {
             result.error_code = Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT;
             return false;
         }
+
+        double maximum_sum = 0.0;
+        double minimum_sum = 0.0;
+        for (int cycle = 0; cycle < config.number_of_waveforms; ++cycle) {
+            maximum_sum += result.independent_cycle_maximum_accumulator[static_cast<std::size_t>(cycle)];
+            minimum_sum += result.independent_cycle_minimum_accumulator[static_cast<std::size_t>(cycle)];
+        }
+        result.cycle_maximum = maximum_sum / static_cast<double>(config.number_of_waveforms);
+        result.cycle_minimum = minimum_sum / static_cast<double>(config.number_of_waveforms);
+        result.v_inf = result.cycle_maximum - result.cycle_minimum;
 
         for (int point = 0; point < config.valid_length; ++point) {
             double sum = 0.0;
@@ -355,6 +388,8 @@ bool estimate(const Config::SamplingConfig& config, Result::SamplingResult& resu
             return false;
         }
     }
+    if (config.is_instant() || config.waveform_processing_mode != "independent_cycle")
+        result.v_inf = result.estimate.b;
     return true;
 }
 

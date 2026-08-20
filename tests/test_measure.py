@@ -784,6 +784,34 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(result.instant_ai_late_reads, 0)
         self.assertEqual(result.instant_ai_interpolated_bins, 0)
 
+    def test_result_process_preserves_reported_business_v_inf(self):
+        result = Result()
+        result.success = True
+        result.wave_interval = 1.0
+        result.wave = [1.0, 0.5]
+        result.tau = 10.0
+        result.w = -0.5
+        result.b = 9.0
+        result.v_inf = 1.3
+
+        result.process()
+
+        self.assertEqual(result.v0, 8.5)
+        self.assertEqual(result.v_inf, 1.3)
+
+    def test_result_process_falls_back_to_b_for_old_server_response(self):
+        result = Result()
+        result.success = True
+        result.wave_interval = 1.0
+        result.wave = [1.0, 0.5]
+        result.tau = 10.0
+        result.w = -0.5
+        result.b = 9.0
+
+        result.process()
+
+        self.assertEqual(result.v_inf, 9.0)
+
     def test_readme_documents_retryable_state_separately_from_acquisition_failures(self):
         readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
         self.assertIn("Instant AI 采集失败的可重试类别", readme)

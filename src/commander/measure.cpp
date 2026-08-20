@@ -81,9 +81,16 @@ void publish_process_result(Result::SamplingResult& destination, Result::Samplin
     destination.rejected_baseline_cycles = source.rejected_baseline_cycles;
     destination.rejected_shape_cycles = source.rejected_shape_cycles;
     destination.independent_cycle_accumulator = std::move(source.independent_cycle_accumulator);
+    destination.independent_cycle_maximum_accumulator =
+        std::move(source.independent_cycle_maximum_accumulator);
+    destination.independent_cycle_minimum_accumulator =
+        std::move(source.independent_cycle_minimum_accumulator);
     destination.cancelled = source.cancelled;
     destination.maximum = source.maximum;
     destination.minimum = source.minimum;
+    destination.cycle_maximum = source.cycle_maximum;
+    destination.cycle_minimum = source.cycle_minimum;
+    destination.v_inf = source.v_inf;
     destination.estimate = std::move(source.estimate);
     destination.success = source.success;
     destination.error_code = source.error_code;
@@ -96,8 +103,16 @@ void publish_process_result(Result::SamplingResult& destination, Result::Samplin
     destination.progress.cancel_requested.store(source.progress.cancel_requested.load());
 }
 
-void publish_process_failure(Error::Code error_code) {
+void publish_process_failure(Error::Code error_code,
+                             const Result::SamplingResult* partial_result = nullptr) {
     Result::SamplingResult& result = Global::result;
+    if (partial_result) {
+        result.maximum = partial_result->maximum;
+        result.minimum = partial_result->minimum;
+        result.cycle_maximum = partial_result->cycle_maximum;
+        result.cycle_minimum = partial_result->cycle_minimum;
+        result.v_inf = partial_result->v_inf;
+    }
     result.cancelled = false;
     result.success = false;
     result.error_code = error_code;
@@ -247,11 +262,18 @@ void to_query() {
     Base::variable(rejected_baseline_cycles);
     Base::variable(rejected_shape_cycles);
 
+    double v_inf = Global::result.v_inf;
+    Base::variable(v_inf);
+
     if (success) {
         double maximum = Global::result.maximum;
         double minimum = Global::result.minimum;
+        double cycle_maximum = Global::result.cycle_maximum;
+        double cycle_minimum = Global::result.cycle_minimum;
         Base::variable(maximum);
         Base::variable(minimum);
+        Base::variable(cycle_maximum);
+        Base::variable(cycle_minimum);
 
         const double sampling_interval = Global::config.sampling_interval;
         Base::variable(sampling_interval);
@@ -405,7 +427,7 @@ void to_process() {
         Global::config = pending_config;
         publish_process_result(Global::result, pending_result);
     } else {
-        publish_process_failure(pending_result.error_code);
+        publish_process_failure(pending_result.error_code, &pending_result);
     }
 }
 
@@ -430,6 +452,8 @@ void clear_measure_data() {
     Global::result.rejected_baseline_cycles = 0;
     Global::result.rejected_shape_cycles = 0;
     Global::result.independent_cycle_accumulator.clear();
+    Global::result.independent_cycle_maximum_accumulator.clear();
+    Global::result.independent_cycle_minimum_accumulator.clear();
     Global::result.cancelled = false;
     Global::result.progress.reset(Global::config.is_instant()
                                       ? Global::config.instant_ai_planned_duration_seconds
@@ -438,6 +462,9 @@ void clear_measure_data() {
     Global::result.error_code = Error::SUCCESS;
     Global::result.maximum = 0.0;
     Global::result.minimum = 0.0;
+    Global::result.cycle_maximum = 0.0;
+    Global::result.cycle_minimum = 0.0;
+    Global::result.v_inf = 0.0;
     Global::result.estimate = Estimate::EstimatedResult();
     if (Global::config.is_instant()) {
         Global::result.totalSamplingBuffer =

@@ -1,6 +1,7 @@
 #include "../../src/config/sampling_config.hpp"
 #include "../../src/constant.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <climits>
 #include <cmath>
@@ -9,7 +10,7 @@
 void test_sampling_config() {
     Config::SamplingConfig config;
     assert(config.waveform_processing_mode == "threshold_accumulation");
-    assert(config.update(3, 0.1, 0.0, 100));
+    assert(config.update(2, 0.1, 0.0, 100));
     assert(config.acquisition_mode == Config::AcquisitionMode::Buffered);
     assert(config.sampling_frequency == Constant::MinSamplingFrequency);
     assert(config.waveform_processing_mode == "threshold_accumulation");
@@ -18,6 +19,24 @@ void test_sampling_config() {
     assert(config.waveform_processing_mode == "independent_cycle");
     assert(!config.update(32, 50.0, 0.0, 100, 10.0, "unknown_mode"));
     assert(config.waveform_processing_mode == "independent_cycle");
+
+    assert(config.update(1, 50.0, 0.0, 100, 10.0, "independent_cycle"));
+    assert(config.sampling_length_per_sample == config.waveform_length * 2);
+
+    // A buffered independent acquisition must fit N+1 complete periods in
+    // every RunOnce block; edge confirmation is an internal scan window.
+    assert(!config.update(1, 0.1, 0.0, 100, 10.0,
+                          "independent_cycle"));
+
+    assert(config.update(64, 50.0, 0.0, 100, 10.0,
+                         "independent_cycle"));
+    assert(config.waveforms_per_sample == 39);
+    assert(config.sampling_time == 2);
+    assert(!config.update(1, Constant::MaxSamplingFrequency * 2.0,
+                          0.0, 100, 10.0, "independent_cycle"));
+    assert(!config.update(INT_MAX, 50.0, 0.0, 100, 10.0,
+                          "independent_cycle"));
+    assert(!config.update(INT_MAX, 50.0));
 
     assert(config.update(3, 10.0, 0.0, 100));
     assert(config.sampling_frequency == Constant::MaxSamplingFrequency);

@@ -20,10 +20,6 @@ double percentile(const std::vector<double>& values, double fraction) {
     return sorted[lower] * (1.0 - ratio) + sorted[upper] * ratio;
 }
 
-double cycle_percentile(const std::vector<double>& cycle, double fraction) {
-    return percentile(cycle, fraction);
-}
-
 double median_window(const std::vector<double>& samples, std::size_t begin, std::size_t end) {
     std::vector<double> window(samples.begin() + static_cast<std::ptrdiff_t>(begin),
                                samples.begin() + static_cast<std::ptrdiff_t>(end));
@@ -54,17 +50,24 @@ double correlation(const std::vector<double>& left, const std::vector<double>& r
     return numerator / std::sqrt(left_sum * right_sum);
 }
 
-std::vector<std::size_t> find_confirmed_edges(const std::vector<double>& samples,
-                                              double lower_bound, double upper_bound,
-                                              int confirmation_points) {
-    const std::size_t window = static_cast<std::size_t>(confirmation_points);
-    if (samples.size() < window) return {};
+struct ConfirmedEdges {
+    std::vector<std::size_t> rising;
+    std::vector<std::size_t> falling;
+};
 
-    std::vector<unsigned char> below(samples.size());
-    std::vector<unsigned char> above(samples.size());
-    for (std::size_t i = 0; i < samples.size(); ++i) {
-        below[i] = samples[i] <= lower_bound;
-        above[i] = samples[i] >= upper_bound;
+ConfirmedEdges find_confirmed_edges(const std::vector<double>& samples,
+                                    std::size_t begin, std::size_t end,
+                                    double lower_bound, double upper_bound,
+                                    int confirmation_points) {
+    const std::size_t window = static_cast<std::size_t>(confirmation_points);
+    const std::size_t sample_count = end - begin;
+    if (sample_count < window) return {};
+
+    std::vector<unsigned char> below(sample_count);
+    std::vector<unsigned char> above(sample_count);
+    for (std::size_t i = 0; i < sample_count; ++i) {
+        below[i] = samples[begin + i] <= lower_bound;
+        above[i] = samples[begin + i] >= upper_bound;
     }
 
     int below_count = 0;
@@ -74,19 +77,22 @@ std::vector<std::size_t> find_confirmed_edges(const std::vector<double>& samples
         above_count += above[i];
     }
 
-    std::vector<std::size_t> edges;
+    ConfirmedEdges edges;
     bool waiting_for_high = false;
-    for (std::size_t i = 0; i + window <= samples.size(); ++i) {
+    for (std::size_t i = 0; i + window <= sample_count; ++i) {
         const bool confirmed_low = below_count * 2 >= confirmation_points;
         const bool confirmed_high = above_count * 2 >= confirmation_points;
         if (!waiting_for_high) {
-            if (confirmed_low) waiting_for_high = true;
+            if (confirmed_low) {
+                if (!edges.rising.empty()) edges.falling.push_back(begin + i);
+                waiting_for_high = true;
+            }
         } else if (confirmed_high) {
-            edges.push_back(i);
+            edges.rising.push_back(begin + i);
             waiting_for_high = false;
         }
 
-        if (i + window < samples.size()) {
+        if (i + window < sample_count) {
             below_count += static_cast<int>(below[i + window]) - static_cast<int>(below[i]);
             above_count += static_cast<int>(above[i + window]) - static_cast<int>(above[i]);
         }
@@ -100,16 +106,28 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
                                                   int sampling_frequency,
                                                   double emitting_frequency,
                                                   int requested_waveforms) {
+    return extract_independent_cycles(samples, 0, samples.size(), sampling_frequency,
+                                      emitting_frequency, requested_waveforms);
+}
+
+IndependentCycleResult extract_independent_cycles(const std::vector<double>& samples,
+                                                  std::size_t begin,
+                                                  std::size_t end,
+                                                  int sampling_frequency,
+                                                  double emitting_frequency,
+                                                  int requested_waveforms) {
     IndependentCycleResult result;
     if (sampling_frequency <= 0 || !std::isfinite(emitting_frequency) || emitting_frequency <= 0.0 ||
-        requested_waveforms <= 0 || samples.empty()) {
+        requested_waveforms <= 0 || begin >= end || end > samples.size()) {
         return result;
     }
 
     const int waveform_length = static_cast<int>(std::llround(sampling_frequency / emitting_frequency));
     if (waveform_length <= 0) return result;
 
-    const auto raw_limits = std::minmax_element(samples.begin(), samples.end());
+    const auto raw_limits = std::minmax_element(
+        samples.begin() + static_cast<std::ptrdiff_t>(begin),
+        samples.begin() + static_cast<std::ptrdiff_t>(end));
     if (*raw_limits.second - *raw_limits.first < Constant::MinVoltageAmplitude) return result;
     const double minimum = *raw_limits.first;
     const double maximum = *raw_limits.second;
@@ -119,15 +137,27 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
     const double lower_bound = minimum + span * Constant::LowerBound;
     const double upper_bound = minimum + span * Constant::UpperBound;
     const int confirmation_points = std::max(32, static_cast<int>(std::llround(waveform_length * 0.00005)));
-    const auto phase_starts = find_confirmed_edges(samples, lower_bound, upper_bound, confirmation_points);
+    const auto edges = find_confirmed_edges(
+        samples, begin, end, lower_bound, upper_bound, confirmation_points);
+    const auto& phase_starts = edges.rising;
     result.candidate_waveforms = static_cast<int>(phase_starts.size());
     if (phase_starts.empty()) return result;
+
+    const std::size_t platform_points = static_cast<std::size_t>(
+        std::max(1, static_cast<int>(std::llround(waveform_length * 0.05))));
+    const std::size_t guard_points = static_cast<std::size_t>(
+        std::max(1, static_cast<int>(std::llround(waveform_length * 0.01))));
 
     std::size_t anchor = phase_starts.front();
     std::vector<double> amplitudes;
     std::vector<double> baselines;
     std::vector<double> template_cycle;
     result.cycles.reserve(static_cast<std::size_t>(requested_waveforms));
+    result.cycle_maximums.reserve(static_cast<std::size_t>(requested_waveforms));
+    result.cycle_minimums.reserve(static_cast<std::size_t>(requested_waveforms));
+    result.voltage_amplitudes.reserve(static_cast<std::size_t>(requested_waveforms));
+
+    std::size_t falling_index = 0;
 
     for (std::size_t edge_index = 1; edge_index < phase_starts.size(); ++edge_index) {
         const std::size_t end = phase_starts[edge_index];
@@ -141,7 +171,31 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
             anchor = end;
             continue;
         }
-        if (anchor < static_cast<std::size_t>(Constant::CroppedLength)) {
+        if (anchor - begin < static_cast<std::size_t>(Constant::CroppedLength)) {
+            anchor = end;
+            continue;
+        }
+
+        while (falling_index < edges.falling.size() && edges.falling[falling_index] <= anchor)
+            ++falling_index;
+        if (falling_index >= edges.falling.size() || edges.falling[falling_index] >= end ||
+            anchor - begin < platform_points + guard_points ||
+            edges.falling[falling_index] - begin < platform_points + guard_points) {
+            ++result.rejected_threshold_candidates;
+            anchor = end;
+            continue;
+        }
+
+        const std::size_t falling_edge = edges.falling[falling_index];
+        const double cycle_minimum = mean_window(samples,
+                                                  anchor - guard_points - platform_points,
+                                                  anchor - guard_points);
+        const double cycle_maximum = mean_window(samples,
+                                                  falling_edge - guard_points - platform_points,
+                                                  falling_edge - guard_points);
+        const double amplitude = cycle_maximum - cycle_minimum;
+        if (!std::isfinite(amplitude) || amplitude <= 0.0) {
+            ++result.rejected_amplitude_cycles;
             anchor = end;
             continue;
         }
@@ -159,7 +213,6 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
                 samples[anchor + left] * (1.0 - fraction) + samples[anchor + right] * fraction - baseline;
         }
 
-        const double amplitude = cycle_percentile(cycle, 0.99) - cycle_percentile(cycle, 0.01);
         if (amplitudes.size() >= 3) {
             const double amplitude_reference = percentile(amplitudes, 0.5);
             if (amplitude < amplitude_reference * 0.70 || amplitude > amplitude_reference * 1.30) {
@@ -189,6 +242,9 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
         }
 
         result.cycles.emplace_back(std::move(cycle));
+        result.cycle_maximums.push_back(cycle_maximum);
+        result.cycle_minimums.push_back(cycle_minimum);
+        result.voltage_amplitudes.push_back(amplitude);
         amplitudes.push_back(amplitude);
         baselines.push_back(baseline);
         if (template_cycle.empty()) {

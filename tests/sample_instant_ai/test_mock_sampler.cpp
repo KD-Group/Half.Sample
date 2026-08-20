@@ -29,4 +29,21 @@ void test_mock_sampler_controls() {
     assert(completed.progress.elapsed_milliseconds.load() ==
            completed.progress.planned_milliseconds.load());
     assert(completed.progress.completed_cycles.load() <= completed.progress.target_cycles.load());
+
+    Config::SamplingConfig buffered_config;
+    assert(buffered_config.update(2, 100.0, 0.0, 100, 10.0,
+                                  "independent_cycle"));
+    buffered_config.waveform_length = 100;
+    buffered_config.sampling_length_per_sample = 300;
+    buffered_config.sampling_time = 2;
+    Result::SamplingResult buffered(false);
+    buffered.totalSamplingBuffer.assign(600, 0.0);
+    assert(mock.set_value("mock_v0", 0.0));
+    assert(mock.set_value("mock_v_inf", 0.0));
+    assert(mock.set_value("mock_noise", 0.0));
+
+    assert(mock.sample(buffered_config, buffered));
+
+    assert(buffered.totalSamplingBuffer[0] ==
+           buffered.totalSamplingBuffer[300]);
 }
