@@ -11,8 +11,14 @@ void test_sampling_progress() {
     std::ostringstream output;
     std::streambuf* original_output = std::cout.rdbuf(output.rdbuf());
     Commander::Base::line("message", std::string("plain \"quote\" \\ slash\rline\nnext\ttab"));
+    std::string control_characters("nul");
+    control_characters.push_back('\0');
+    control_characters += "backspace\bformfeed\fescape";
+    control_characters.push_back('\x1b');
+    Commander::Base::line("controls", control_characters);
     std::cout.rdbuf(original_output);
-    assert(output.str() == "message = \"plain \\\"quote\\\" \\\\ slash\\rline\\nnext\\ttab\"\n");
+    assert(output.str() == "message = \"plain \\\"quote\\\" \\\\ slash\\rline\\nnext\\ttab\"\n"
+                           "controls = \"nul?backspace?formfeed?escape?\"\n");
 
     Result::SamplingProgress progress;
     assert(Result::SamplingProgress::to_milliseconds(std::numeric_limits<double>::quiet_NaN()) == 0);

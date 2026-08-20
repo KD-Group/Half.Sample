@@ -16,7 +16,9 @@ void output(const std::string& value) {
         case '\r': std::cout << "\\r"; break;
         case '\n': std::cout << "\\n"; break;
         case '\t': std::cout << "\\t"; break;
-        default: std::cout << character; break;
+        default:
+            std::cout << (static_cast<unsigned char>(character) < 0x20 ? '?' : character);
+            break;
         }
     }
     std::cout << "\"";
