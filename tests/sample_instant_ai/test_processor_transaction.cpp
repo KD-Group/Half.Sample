@@ -10,7 +10,32 @@
 #include <limits>
 #include <sstream>
 
+namespace Commander { void measure(); }
+
 namespace {
+
+class RetryThenFailSampler : public Sampler::Sampler {
+  public:
+    bool sample(const Config::SamplingConfig&, Result::SamplingResult& result) override {
+        ++attempts;
+        if (attempts == 1) {
+            result.totalSamplingBuffer = {0.0, 1.0};
+            result.independent_cycle_accumulator.push_back({42.0});
+            return true;
+        }
+        accumulator_preserved = result.independent_cycle_accumulator.size() == 1 &&
+                                result.independent_cycle_accumulator[0][0] == 42.0;
+        result.error_code = Error::ErrorHandleNotValid;
+        return false;
+    }
+
+    std::string name() override { return "retry_then_fail"; }
+    double get_value(const std::string&) override { return 0.0; }
+    bool set_value(const std::string&, double) override { return false; }
+
+    int attempts{};
+    bool accumulator_preserved{};
+};
 
 void assert_non_finite_result_is_rejected(double Result::SamplingResult::* field, double value) {
     Config::SamplingConfig config;
@@ -120,6 +145,19 @@ void test_processor_transaction() {
     assert(!invalid_voltage.v_inf_valid);
     assert(invalid_voltage.v_inf == 0.0);
 
+    Result::SamplingResult missing_validity(false);
+    missing_validity.success = true;
+    missing_validity.maximum = 1.0;
+    missing_validity.minimum = 0.0;
+    missing_validity.estimate.interval = 0.1;
+    missing_validity.estimate.tau = 1.0;
+    missing_validity.estimate.w = 1.0;
+    missing_validity.estimate.b = 1.0;
+    missing_validity.estimate.loss = 0.0;
+    missing_validity.estimate.y.reset(new Vector(1, 1.0));
+    assert(!Commander::Processor::validate_finite_result(preserved_config, missing_validity));
+    assert(missing_validity.error_code == Error::SAMPLING_RESULT_NOT_FINITE);
+
     Config::SamplingConfig failed_fit_config;
     failed_fit_config.auto_mode = false;
     assert(failed_fit_config.update(1, 50.0, 0.0, 100, 10.0, "independent_cycle"));
@@ -131,6 +169,26 @@ void test_processor_transaction() {
     assert(failed_fit.error_code == Error::FIT_NOT_IDENTIFIABLE);
     assert(failed_fit.v_inf == 2.0);
     assert(failed_fit.v_inf_valid);
+
+    const Sampler::SamplerPtr original_sampler = Global::sampler;
+    const Config::SamplingConfig original_config = Global::config;
+    std::shared_ptr<RetryThenFailSampler> retry_sampler(new RetryThenFailSampler());
+    Global::sampler = retry_sampler;
+    Global::config.auto_mode = false;
+    assert(Global::config.update(2, 50.0, 0.0, 100, 10.0, "independent_cycle"));
+    Global::result.totalSamplingBuffer.clear();
+    Global::result.resultWave.assign(static_cast<std::size_t>(Global::config.valid_length), 0.0);
+    Global::result.v_inf = 0.0;
+    Global::result.v_inf_valid = false;
+    Commander::measure();
+    assert(retry_sampler->attempts == 2);
+    assert(retry_sampler->accumulator_preserved);
+    assert(!Global::result.success);
+    assert(Global::result.error_code == Error::ErrorHandleNotValid);
+    assert(Global::result.v_inf == 0.0);
+    assert(!Global::result.v_inf_valid);
+    Global::sampler = original_sampler;
+    Global::config = original_config;
 
     Global::config.dump_file_path = "unchanged-config";
     Global::result.totalSamplingBuffer.assign(1, 123.0);

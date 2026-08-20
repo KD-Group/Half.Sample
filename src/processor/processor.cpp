@@ -57,7 +57,8 @@ bool validate_finite_result(const Config::SamplingConfig& config, Result::Sampli
     }
 
     const Estimate::EstimatedResult& estimate = result.estimate;
-    const bool finite_scalars = std::isfinite(result.maximum) && std::isfinite(result.minimum) &&
+    const bool finite_scalars = result.v_inf_valid && result.v_inf > 0.0 &&
+                                std::isfinite(result.maximum) && std::isfinite(result.minimum) &&
                                 std::isfinite(result.cycle_maximum) && std::isfinite(result.cycle_minimum) &&
                                 std::isfinite(result.v_inf) &&
                                 std::isfinite(config.sampling_interval) &&

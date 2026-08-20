@@ -220,8 +220,12 @@ void test_dump_format() {
         assert(Sampler::Sampler::dump_origin_data(config, original));
 
         Result::SamplingResult replay(false);
+        replay.v_inf = 9.0;
+        replay.v_inf_valid = true;
         assert(Sampler::Sampler::load_origin_data(config, replay));
         assert(replay.totalSamplingBuffer == original.totalSamplingBuffer);
+        assert(replay.v_inf == 0.0);
+        assert(!replay.v_inf_valid);
     }
 
     {

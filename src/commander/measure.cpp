@@ -131,6 +131,8 @@ void measure() {
 
     while (true) {
         ++attempts;
+        Global::result.v_inf = 0.0;
+        Global::result.v_inf_valid = false;
         success = Global::sampler->sample(Global::config, Global::result);
         if (success) success = Processor::align(Global::config, Global::result);
         if (success) success = Processor::summation(Global::config, Global::result);

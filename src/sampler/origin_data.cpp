@@ -152,6 +152,7 @@ void reset_loaded_result(Result::SamplingResult& result, const Config::SamplingC
     result.cycle_maximum = 0.0;
     result.cycle_minimum = 0.0;
     result.v_inf = 0.0;
+    result.v_inf_valid = false;
     result.estimate = Estimate::EstimatedResult();
 }
 
