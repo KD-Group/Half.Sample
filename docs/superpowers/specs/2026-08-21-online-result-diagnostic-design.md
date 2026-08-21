@@ -38,16 +38,17 @@ KDM3000 二阶段下降连续采样时，`to_measure -> to_query` 偶发返回�
 6. 输出带 `diagnostic_` 前缀的结果字段，包括成功状态、错误、`v_inf`、有效性、最大最小值以及拟合参数。
 7. 不写入 `Global::config` 或 `Global::result`。
 
-Python 包装层新增 `diagnose_current_result()`，只负责发送命令并解析诊断字段。
+不修改 Python 包装层公开 API。KDM3000 通过现有 `sampler.communicate()` 发送诊断命令，并使用普通 `Result` 解析返回字段，减少现场只更新 `sample.exe` 时的版本耦合。
 
 ### KDM3000
 
-仅在二阶段 motion-risk 的 no-dump 路径中：
+仅在二阶段 motion-risk 的 no-dump 路径中，并且只在在线结果出现明显异常时：
 
 1. 保留原来的 `sampler.query()` 结果作为业务结果。
-2. 随后调用 `sampler.diagnose_current_result()`。
-3. 在同一条结构化日志中记录在线结果与内存重算结果。
-4. 诊断失败只记录 warning，不改变业务结果、重试逻辑或运动控制。
+2. 正常结果不增加额外调用，保持连续采样时序不变。
+3. 当有效在线电压达到临时诊断阈值 `0.2 V` 时，立即通过 `sampler.communicate('to_diagnose_current_result')` 重算；该阈值覆盖已观察到的 `0.625382 V`，同时不会影响前序约 `0.1 V` 的样本。
+4. 在同一条结构化日志中记录在线结果与内存重算结果。
+5. 诊断失败只记录 warning，不改变业务结果、重试逻辑或运动控制。
 
 dump 路径继续使用现有 `online_before_process` 与 `offline_after_process` 日志，不重复调用内存诊断。
 
@@ -55,7 +56,7 @@ dump 路径继续使用现有 `online_before_process` 与 `offline_after_process
 
 - 在线值异常、内存重算正常：问题位于复用的 `Global::result`、在线处理状态或未定义行为。
 - 在线值和内存重算同时异常：问题来自本次内存原始数据、配置或确定性处理算法。
-- no-dump 正常，而只有去掉诊断调用才异常：诊断本身改变了采样后的时序，下一步应在处理阶段内加入无额外重算的缓冲区摘要。
+- 诊断只在异常在线结果已经产生后运行，因而不会改变异常发生前的连续采样节奏。
 - dump 在线值正常、no-dump 在线值异常，且 no-dump 内存重算正常：写文件读取或延迟掩盖了在线状态问题。
 
 ## 约束与验证

@@ -141,6 +141,115 @@ void publish_process_failure(Error::Code error_code,
 } // namespace
 
 namespace Commander {
+namespace {
+
+void emit_query_result(const Config::SamplingConfig& config,
+                       const Result::SamplingResult& result,
+                       bool measuring) {
+    bool success = measuring ? false : result.success;
+    Base::variable(success);
+    Base::variable(measuring);
+    std::string acquisition_mode = config.is_instant() ? "instant_ai" : "buffered_ai";
+    Base::variable(acquisition_mode);
+    std::string waveform_processing_mode = config.waveform_processing_mode;
+    Base::variable(waveform_processing_mode);
+    if (measuring) {
+        return;
+    }
+    std::string error_category = Error::category(result.error_code);
+    bool retryable = Error::retryable(result.error_code);
+    bool cancelled = result.cancelled || result.error_code == Error::USER_CANCELLED;
+    int instant_ai_complete_waveforms = result.instant_ai_complete_waveforms;
+    double instant_ai_planned_duration_seconds = config.instant_ai_planned_duration_seconds;
+    double instant_ai_actual_duration_seconds = result.instant_ai_actual_duration_seconds;
+    Base::variable(error_category);
+    Base::variable(retryable);
+    Base::variable(cancelled);
+    Base::variable(instant_ai_complete_waveforms);
+    Base::variable(instant_ai_planned_duration_seconds);
+    Base::variable(instant_ai_actual_duration_seconds);
+    int instant_ai_late_reads = result.instant_ai_late_reads;
+    int instant_ai_interpolated_bins = result.instant_ai_interpolated_bins;
+    Base::variable(instant_ai_late_reads);
+    Base::variable(instant_ai_interpolated_bins);
+    int complete_waveforms = result.complete_waveforms;
+    int discarded_waveforms = result.discarded_waveforms;
+    int independent_batches = result.independent_batches;
+    int independent_retries = result.independent_retries;
+    int rejected_threshold_candidates = result.rejected_threshold_candidates;
+    int rejected_short_periods = result.rejected_short_periods;
+    int rejected_long_periods = result.rejected_long_periods;
+    int rejected_amplitude_cycles = result.rejected_amplitude_cycles;
+    int rejected_baseline_cycles = result.rejected_baseline_cycles;
+    int rejected_shape_cycles = result.rejected_shape_cycles;
+    Base::variable(complete_waveforms);
+    Base::variable(discarded_waveforms);
+    Base::variable(independent_batches);
+    Base::variable(independent_retries);
+    Base::variable(rejected_threshold_candidates);
+    Base::variable(rejected_short_periods);
+    Base::variable(rejected_long_periods);
+    Base::variable(rejected_amplitude_cycles);
+    Base::variable(rejected_baseline_cycles);
+    Base::variable(rejected_shape_cycles);
+
+    double v_inf = result.v_inf;
+    Base::variable(v_inf);
+    bool v_inf_valid = result.v_inf_valid;
+    Base::variable(v_inf_valid);
+    double cycle_vmax = result.cycle_vmax;
+    double cycle_vmin = result.cycle_vmin;
+    double cycle_vpp = result.cycle_vpp;
+    double cycle_vtop = result.cycle_vtop;
+    double cycle_vbase = result.cycle_vbase;
+    Base::variable(cycle_vmax);
+    Base::variable(cycle_vmin);
+    Base::variable(cycle_vpp);
+    Base::variable(cycle_vtop);
+    Base::variable(cycle_vbase);
+
+    if (success) {
+        double maximum = result.maximum;
+        double minimum = result.minimum;
+        double cycle_maximum = result.cycle_maximum;
+        double cycle_minimum = result.cycle_minimum;
+        Base::variable(maximum);
+        Base::variable(minimum);
+        Base::variable(cycle_maximum);
+        Base::variable(cycle_minimum);
+
+        const double sampling_interval = config.sampling_interval;
+        Base::variable(sampling_interval);
+        const double wave_interval = result.estimate.interval;
+        Base::variable(wave_interval);
+
+        const double tau = result.estimate.tau;
+        Base::variable(tau);
+        const double w = result.estimate.w;
+        Base::variable(w);
+        const double b = result.estimate.b;
+        Base::variable(b);
+        const double loss = result.estimate.loss;
+        Base::variable(loss);
+    } else {
+        std::string message = Error::to_string(result.error_code);
+        Base::variable(message);
+        const double wave_interval = 0.0;
+        Base::variable(wave_interval);
+    }
+
+    printf("wave = [");
+    if (success && result.estimate.y) {
+        const auto& values = *result.estimate.y;
+        for (double value : values) {
+            printf("%.3f,", value);
+        }
+    }
+    printf("]\n");
+}
+
+} // namespace
+
 void measure() {
     bool success = false;
     const bool independent_mode = Global::config.waveform_processing_mode == "independent_cycle" &&
@@ -237,107 +346,34 @@ void async_measure(const std::string& dump_file_path) {
 
 void to_query() {
     bool measuring = Global::result.measuring.load(std::memory_order_acquire);
-    bool success = measuring ? false : Global::result.success;
-    Base::variable(success);
-    Base::variable(measuring);
-    std::string acquisition_mode = Global::config.is_instant() ? "instant_ai" : "buffered_ai";
-    Base::variable(acquisition_mode);
-    std::string waveform_processing_mode = Global::config.waveform_processing_mode;
-    Base::variable(waveform_processing_mode);
-    if (measuring) {
+    emit_query_result(Global::config, Global::result, measuring);
+}
+
+void to_diagnose_current_result() {
+    if (Global::result.measuring.load(std::memory_order_acquire)) {
+        Base::error(Error::NOW_IN_MEASURING);
         return;
     }
-    std::string error_category = Error::category(Global::result.error_code);
-    bool retryable = Error::retryable(Global::result.error_code);
-    bool cancelled = Global::result.cancelled || Global::result.error_code == Error::USER_CANCELLED;
-    int instant_ai_complete_waveforms = Global::result.instant_ai_complete_waveforms;
-    double instant_ai_planned_duration_seconds = Global::config.instant_ai_planned_duration_seconds;
-    double instant_ai_actual_duration_seconds = Global::result.instant_ai_actual_duration_seconds;
-    Base::variable(error_category);
-    Base::variable(retryable);
-    Base::variable(cancelled);
-    Base::variable(instant_ai_complete_waveforms);
-    Base::variable(instant_ai_planned_duration_seconds);
-    Base::variable(instant_ai_actual_duration_seconds);
-    int instant_ai_late_reads = Global::result.instant_ai_late_reads;
-    int instant_ai_interpolated_bins = Global::result.instant_ai_interpolated_bins;
-    Base::variable(instant_ai_late_reads);
-    Base::variable(instant_ai_interpolated_bins);
-    int complete_waveforms = Global::result.complete_waveforms;
-    int discarded_waveforms = Global::result.discarded_waveforms;
-    int independent_batches = Global::result.independent_batches;
-    int independent_retries = Global::result.independent_retries;
-    int rejected_threshold_candidates = Global::result.rejected_threshold_candidates;
-    int rejected_short_periods = Global::result.rejected_short_periods;
-    int rejected_long_periods = Global::result.rejected_long_periods;
-    int rejected_amplitude_cycles = Global::result.rejected_amplitude_cycles;
-    int rejected_baseline_cycles = Global::result.rejected_baseline_cycles;
-    int rejected_shape_cycles = Global::result.rejected_shape_cycles;
-    Base::variable(complete_waveforms);
-    Base::variable(discarded_waveforms);
-    Base::variable(independent_batches);
-    Base::variable(independent_retries);
-    Base::variable(rejected_threshold_candidates);
-    Base::variable(rejected_short_periods);
-    Base::variable(rejected_long_periods);
-    Base::variable(rejected_amplitude_cycles);
-    Base::variable(rejected_baseline_cycles);
-    Base::variable(rejected_shape_cycles);
 
-    double v_inf = Global::result.v_inf;
-    Base::variable(v_inf);
-    bool v_inf_valid = Global::result.v_inf_valid;
-    Base::variable(v_inf_valid);
-    double cycle_vmax = Global::result.cycle_vmax;
-    double cycle_vmin = Global::result.cycle_vmin;
-    double cycle_vpp = Global::result.cycle_vpp;
-    double cycle_vtop = Global::result.cycle_vtop;
-    double cycle_vbase = Global::result.cycle_vbase;
-    Base::variable(cycle_vmax);
-    Base::variable(cycle_vmin);
-    Base::variable(cycle_vpp);
-    Base::variable(cycle_vtop);
-    Base::variable(cycle_vbase);
+    const Config::SamplingConfig config = Global::config;
+    Result::SamplingResult replay(false);
+    replay.totalSamplingBuffer = Global::result.totalSamplingBuffer;
+    replay.instant_ai_waveforms = Global::result.instant_ai_waveforms;
+    replay.instant_ai_readings = Global::result.instant_ai_readings;
+    replay.instant_ai_format_version = Global::result.instant_ai_format_version;
+    replay.instant_ai_actual_duration_seconds = Global::result.instant_ai_actual_duration_seconds;
+    const int valid_length = config.valid_length > 0 ? config.valid_length : 0;
+    replay.resultWave.assign(static_cast<std::size_t>(valid_length), 0.0);
 
+    bool success = Processor::align(config, replay);
+    if (success) success = Processor::summation(config, replay);
+    if (success) success = Processor::estimate(config, replay);
     if (success) {
-        double maximum = Global::result.maximum;
-        double minimum = Global::result.minimum;
-        double cycle_maximum = Global::result.cycle_maximum;
-        double cycle_minimum = Global::result.cycle_minimum;
-        Base::variable(maximum);
-        Base::variable(minimum);
-        Base::variable(cycle_maximum);
-        Base::variable(cycle_minimum);
-
-        const double sampling_interval = Global::config.sampling_interval;
-        Base::variable(sampling_interval);
-        const double wave_interval = Global::result.estimate.interval;
-        Base::variable(wave_interval);
-
-        const double tau = Global::result.estimate.tau;
-        Base::variable(tau);
-        const double w = Global::result.estimate.w;
-        Base::variable(w);
-        const double b = Global::result.estimate.b;
-        Base::variable(b);
-        const double loss = Global::result.estimate.loss;
-        Base::variable(loss);
-
-    } else {
-        std::string message = Error::to_string(Global::result.error_code);
-        Base::variable(message);
-        const double wave_interval = 0.0;
-        Base::variable(wave_interval);
+        replay.success = true;
+        success = Processor::validate_finite_result(config, replay);
     }
-
-    printf("wave = [");
-    if (success && Global::result.estimate.y) {
-        const auto& values = *Global::result.estimate.y;
-        for (double value : values) {
-            printf("%.3f,", value);
-        }
-    }
-    printf("]\n");
+    replay.success = success;
+    emit_query_result(config, replay, false);
 }
 
 void to_measure() {

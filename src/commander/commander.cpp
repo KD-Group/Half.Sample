@@ -69,6 +69,7 @@ void exec() {
     add_func_into_mapper(get_sampler_value, mapper);
 
     add_func_into_mapper(to_query, mapper);
+    add_func_into_mapper(to_diagnose_current_result, mapper);
     add_func_into_mapper(to_measure, mapper);
     add_func_into_mapper(is_measuring, mapper);
     add_func_into_mapper(to_dump, mapper);
