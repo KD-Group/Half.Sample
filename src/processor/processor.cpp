@@ -444,8 +444,7 @@ bool estimate(const Config::SamplingConfig& config, Result::SamplingResult& resu
     } else {
         auto wave = average(config, result, config.emitting_frequency);
         result.estimate = Estimate::one_third_search(wave);
-        if (!config.is_instant() && config.waveform_processing_mode == "independent_cycle" &&
-            !fit_is_identifiable(wave, result.estimate)) {
+        if (!config.is_instant() && !fit_is_identifiable(wave, result.estimate)) {
             result.estimate = Estimate::EstimatedResult();
             result.error_code = Error::FIT_NOT_IDENTIFIABLE;
             return false;

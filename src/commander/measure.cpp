@@ -458,33 +458,6 @@ void to_query() {
     emit_query_result(Global::config, Global::result, measuring);
 }
 
-void to_diagnose_current_result() {
-    if (Global::result.measuring.load(std::memory_order_acquire)) {
-        Base::error(Error::NOW_IN_MEASURING);
-        return;
-    }
-
-    const Config::SamplingConfig config = Global::config;
-    Result::SamplingResult replay(false);
-    replay.totalSamplingBuffer = Global::result.totalSamplingBuffer;
-    replay.instant_ai_waveforms = Global::result.instant_ai_waveforms;
-    replay.instant_ai_readings = Global::result.instant_ai_readings;
-    replay.instant_ai_format_version = Global::result.instant_ai_format_version;
-    replay.instant_ai_actual_duration_seconds = Global::result.instant_ai_actual_duration_seconds;
-    const int valid_length = config.valid_length > 0 ? config.valid_length : 0;
-    replay.resultWave.assign(static_cast<std::size_t>(valid_length), 0.0);
-
-    bool success = Processor::align(config, replay);
-    if (success) success = Processor::summation(config, replay);
-    if (success) success = Processor::estimate(config, replay);
-    if (success) {
-        replay.success = true;
-        success = Processor::validate_finite_result(config, replay);
-    }
-    replay.success = success;
-    emit_query_result(config, replay, false);
-}
-
 void to_measure() {
     async_measure("");
 }

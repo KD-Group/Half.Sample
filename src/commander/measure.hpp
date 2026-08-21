@@ -4,8 +4,6 @@
 namespace Commander {
 void to_query();
 
-void to_diagnose_current_result();
-
 void to_measure();
 
 void to_config();
