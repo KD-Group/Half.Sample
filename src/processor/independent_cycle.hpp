@@ -19,6 +19,9 @@ struct IndependentCycleResult {
     int rejected_baseline_cycles = 0;
     int rejected_shape_cycles = 0;
     std::vector<std::vector<double>> cycles;
+    std::vector<double> cycle_vmaxs;
+    std::vector<double> cycle_vmins;
+    std::vector<double> cycle_vpps;
     std::vector<double> cycle_maximums;
     std::vector<double> cycle_minimums;
     std::vector<double> voltage_amplitudes;

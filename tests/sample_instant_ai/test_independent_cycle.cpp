@@ -141,7 +141,7 @@ void test_independent_cycle_accumulates_valid_cycles_across_batches() {
     assert(result.independent_batches == 2);
 }
 
-void test_independent_cycle_uses_edge_platform_means_for_voltage() {
+void test_independent_cycle_uses_cycle_percentiles_for_voltage() {
     constexpr int sampling_frequency = 1'000;
     constexpr double emitting_frequency = 1.0;
     std::vector<double> samples(3'000, 1.0);
@@ -152,51 +152,39 @@ void test_independent_cycle_uses_edge_platform_means_for_voltage() {
         for (int point = rising_edge; point < falling_edge; ++point)
             samples[static_cast<std::size_t>(point)] = 3.0;
 
-        // The edge-adjacent platforms deliberately differ from the cycle extrema.
-        // With a 5% platform window and a 1% guard, these are the values that
-        // must define the cycle voltage instead of P99/P01.
+        // The edge-adjacent platforms deliberately differ from the cycle
+        // percentiles and must not define the cycle voltage.
         for (int point = falling_edge - 100; point < falling_edge; ++point)
             samples[static_cast<std::size_t>(point)] = 2.5;
         for (int point = rising_edge - 100; point < rising_edge; ++point)
             samples[static_cast<std::size_t>(point)] = 1.2;
     }
 
+    // Fewer than 10% moderate spikes preserve threshold detection while
+    // proving that raw extrema are reported separately from P90/P10.
+    for (const int rising_edge : {500, 1'500}) {
+        samples[static_cast<std::size_t>(rising_edge + 200)] = 3.2;
+        samples[static_cast<std::size_t>(rising_edge + 700)] = 0.8;
+    }
+
     const auto result = Commander::Processor::extract_independent_cycles(
         samples, sampling_frequency, emitting_frequency, 2);
 
     assert(result.success);
+    assert(result.cycle_vmaxs.size() == 2);
+    assert(result.cycle_vmins.size() == 2);
+    assert(result.cycle_vpps.size() == 2);
     assert(result.cycle_maximums.size() == 2);
     assert(result.cycle_minimums.size() == 2);
-    assert(std::fabs(result.cycle_maximums[0] - 2.5) < 1e-9);
-    assert(std::fabs(result.cycle_minimums[0] - 1.2) < 1e-9);
-    assert(std::fabs(result.voltage_amplitudes[0] - 1.3) < 1e-9);
-}
-
-void test_independent_cycle_guard_is_one_percent_for_short_periods() {
-    constexpr int waveform_length = 500;
-    std::vector<double> samples(1'900, 1.0);
-    for (const int rising_edge : {350, 850, 1'350}) {
-        const int falling_edge = rising_edge + 200;
-        for (int point = rising_edge; point < falling_edge; ++point)
-            samples[static_cast<std::size_t>(point)] = 3.0;
-
-        // Confirmation records this falling boundary 16 points early.  The
-        // correct 5-point guard therefore averages [edge-30, edge-5).
-        const int confirmed_edge = falling_edge - 16;
-        for (int point = confirmed_edge - 30;
-             point < confirmed_edge - 8; ++point)
-            samples[static_cast<std::size_t>(point)] = 2.8;
-        for (int point = confirmed_edge - 8;
-             point < confirmed_edge - 5; ++point)
-            samples[static_cast<std::size_t>(point)] = 2.6;
+    assert(result.voltage_amplitudes.size() == 2);
+    for (std::size_t cycle = 0; cycle < 2; ++cycle) {
+        assert(std::fabs(result.cycle_vmaxs[cycle] - 3.2) < 1e-9);
+        assert(std::fabs(result.cycle_vmins[cycle] - 0.8) < 1e-9);
+        assert(std::fabs(result.cycle_vpps[cycle] - 2.4) < 1e-9);
+        assert(std::fabs(result.cycle_maximums[cycle] - 3.0) < 1e-9);
+        assert(std::fabs(result.cycle_minimums[cycle] - 1.0) < 1e-9);
+        assert(std::fabs(result.voltage_amplitudes[cycle] - 2.0) < 1e-9);
     }
-
-    const auto result = Commander::Processor::extract_independent_cycles(
-        samples, 1'000, 2.0, 2);
-
-    assert(result.success);
-    assert(std::fabs(result.cycle_maximums[0] - 2.776) < 1e-9);
-    assert(std::fabs(result.cycle_minimums[0] - 1.0) < 1e-9);
 }
 
 void test_independent_cycle_summation_keeps_acquisition_batches_independent() {
@@ -229,7 +217,7 @@ void test_independent_cycle_summation_keeps_acquisition_batches_independent() {
     assert(result.v_inf_valid);
 }
 
-void test_independent_cycle_platform_windows_do_not_cross_batch_start() {
+void test_independent_cycle_stats_do_not_cross_batch_start() {
     constexpr std::size_t batch_size = 2'500;
     std::vector<double> samples(batch_size * 2, 1.0);
     const std::size_t begin = batch_size;

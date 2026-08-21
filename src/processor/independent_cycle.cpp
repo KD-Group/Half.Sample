@@ -143,16 +143,14 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
     result.candidate_waveforms = static_cast<int>(phase_starts.size());
     if (phase_starts.empty()) return result;
 
-    const std::size_t platform_points = static_cast<std::size_t>(
-        std::max(1, static_cast<int>(std::llround(waveform_length * 0.05))));
-    const std::size_t guard_points = static_cast<std::size_t>(
-        std::max(1, static_cast<int>(std::llround(waveform_length * 0.01))));
-
     std::size_t anchor = phase_starts.front();
     std::vector<double> amplitudes;
     std::vector<double> baselines;
     std::vector<double> template_cycle;
     result.cycles.reserve(static_cast<std::size_t>(requested_waveforms));
+    result.cycle_vmaxs.reserve(static_cast<std::size_t>(requested_waveforms));
+    result.cycle_vmins.reserve(static_cast<std::size_t>(requested_waveforms));
+    result.cycle_vpps.reserve(static_cast<std::size_t>(requested_waveforms));
     result.cycle_maximums.reserve(static_cast<std::size_t>(requested_waveforms));
     result.cycle_minimums.reserve(static_cast<std::size_t>(requested_waveforms));
     result.voltage_amplitudes.reserve(static_cast<std::size_t>(requested_waveforms));
@@ -178,21 +176,28 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
 
         while (falling_index < edges.falling.size() && edges.falling[falling_index] <= anchor)
             ++falling_index;
-        if (falling_index >= edges.falling.size() || edges.falling[falling_index] >= end ||
-            anchor - begin < platform_points + guard_points ||
-            edges.falling[falling_index] - begin < platform_points + guard_points) {
+        if (falling_index >= edges.falling.size() || edges.falling[falling_index] >= end) {
             ++result.rejected_threshold_candidates;
             anchor = end;
             continue;
         }
 
-        const std::size_t falling_edge = edges.falling[falling_index];
-        const double cycle_minimum = mean_window(samples,
-                                                  anchor - guard_points - platform_points,
-                                                  anchor - guard_points);
-        const double cycle_maximum = mean_window(samples,
-                                                  falling_edge - guard_points - platform_points,
-                                                  falling_edge - guard_points);
+        std::vector<double> raw_cycle(
+            samples.begin() + static_cast<std::ptrdiff_t>(anchor),
+            samples.begin() + static_cast<std::ptrdiff_t>(end));
+        if (std::any_of(raw_cycle.begin(), raw_cycle.end(),
+                        [](double sample) { return !std::isfinite(sample); })) {
+            ++result.rejected_amplitude_cycles;
+            anchor = end;
+            continue;
+        }
+
+        const auto cycle_limits = std::minmax_element(raw_cycle.begin(), raw_cycle.end());
+        const double cycle_vmin = *cycle_limits.first;
+        const double cycle_vmax = *cycle_limits.second;
+        const double cycle_vpp = cycle_vmax - cycle_vmin;
+        const double cycle_maximum = percentile(raw_cycle, 0.90);
+        const double cycle_minimum = percentile(raw_cycle, 0.10);
         const double amplitude = cycle_maximum - cycle_minimum;
         if (!std::isfinite(amplitude) || amplitude <= 0.0) {
             ++result.rejected_amplitude_cycles;
@@ -242,6 +247,9 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
         }
 
         result.cycles.emplace_back(std::move(cycle));
+        result.cycle_vmaxs.push_back(cycle_vmax);
+        result.cycle_vmins.push_back(cycle_vmin);
+        result.cycle_vpps.push_back(cycle_vpp);
         result.cycle_maximums.push_back(cycle_maximum);
         result.cycle_minimums.push_back(cycle_minimum);
         result.voltage_amplitudes.push_back(amplitude);
