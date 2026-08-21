@@ -3,7 +3,9 @@
 #include "../global/global.hpp"
 #include "../processor/processor.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <iomanip>
 #include <sstream>
 #include <utility>
 
@@ -143,6 +145,24 @@ void publish_process_failure(Error::Code error_code,
 namespace Commander {
 namespace {
 
+std::string last_dump_buffer_hash;
+std::size_t last_dump_buffer_size = 0;
+
+std::string buffer_hash(const std::vector<double>& values) {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (double value : values) {
+        std::uint64_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        for (int byte = 0; byte < 8; ++byte) {
+            hash ^= static_cast<unsigned char>(bits >> (byte * 8));
+            hash *= 1099511628211ULL;
+        }
+    }
+    std::ostringstream text;
+    text << std::hex << std::setw(16) << std::setfill('0') << hash;
+    return text.str();
+}
+
 void emit_query_result(const Config::SamplingConfig& config,
                        const Result::SamplingResult& result,
                        bool measuring) {
@@ -261,6 +281,11 @@ void measure() {
         Global::result.v_inf = 0.0;
         Global::result.v_inf_valid = false;
         success = Global::sampler->sample(Global::config, Global::result);
+        if (success && !Global::config.is_instant() &&
+            !Global::config.dump_file_path.empty()) {
+            last_dump_buffer_hash = buffer_hash(Global::result.totalSamplingBuffer);
+            last_dump_buffer_size = Global::result.totalSamplingBuffer.size();
+        }
         if (success) success = Processor::align(Global::config, Global::result);
         if (success) success = Processor::summation(Global::config, Global::result);
         if (success) success = Processor::estimate(Global::config, Global::result);
@@ -373,6 +398,14 @@ void to_diagnose_current_result() {
         success = Processor::validate_finite_result(config, replay);
     }
     replay.success = success;
+    std::string diagnostic_buffer_hash = buffer_hash(replay.totalSamplingBuffer);
+    std::string diagnostic_last_dump_buffer_hash = last_dump_buffer_hash;
+    double diagnostic_buffer_size = static_cast<double>(replay.totalSamplingBuffer.size());
+    double diagnostic_last_dump_buffer_size = static_cast<double>(last_dump_buffer_size);
+    Base::variable(diagnostic_buffer_hash);
+    Base::variable(diagnostic_last_dump_buffer_hash);
+    Base::variable(diagnostic_buffer_size);
+    Base::variable(diagnostic_last_dump_buffer_size);
     emit_query_result(config, replay, false);
 }
 

@@ -36,7 +36,8 @@ KDM3000 二阶段下降连续采样时，`to_measure -> to_query` 偶发返回�
 4. 复制当前采集输入，包括 buffered 原始缓冲区或 Instant AI 原始读数，并按配置初始化 `resultWave`。
 5. 在 `replay` 上执行与在线链路相同的 `align -> summation -> estimate -> validate_finite_result`。
 6. 输出带 `diagnostic_` 前缀的结果字段，包括成功状态、错误、`v_inf`、有效性、最大最小值以及拟合参数。
-7. 不写入 `Global::config` 或 `Global::result`。
+7. 额外输出当前缓冲区和上一次 dump 缓冲区的精确 double 位模式 hash 与长度；hash 相同可直接确认复用了上次 dump 数据。
+8. 不写入 `Global::config` 或 `Global::result`。
 
 不修改 Python 包装层公开 API。KDM3000 通过现有 `sampler.communicate()` 发送诊断命令，并使用普通 `Result` 解析返回字段，减少现场只更新 `sample.exe` 时的版本耦合。
 
