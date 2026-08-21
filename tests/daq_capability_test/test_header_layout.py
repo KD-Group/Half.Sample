@@ -339,7 +339,7 @@ class HeaderLayoutTest(unittest.TestCase):
         )
 
         self.assertIn("doublecycle_maximum{},cycle_minimum{},v_inf{};boolv_inf_valid{};", result_header)
-        self.assertIn("boolv_inf_valid=Global::result.v_inf_valid;Base::variable(v_inf_valid);", measure)
+        self.assertIn("boolv_inf_valid=result.v_inf_valid;Base::variable(v_inf_valid);", measure)
 
 
 if __name__ == "__main__":

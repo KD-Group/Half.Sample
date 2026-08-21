@@ -58,6 +58,7 @@ class MyTestCase(unittest.TestCase):
 
     def test_low_voltage_margin(self):
         sampler.set_sampler(sampler_name="mock_sampler")
+        sampler.set_sampler_value("mock_noise", 0)
 
         for mock_v0, mock_v_inf in [[1, 2], [2, 3]]:
             sampler.set_sampler_value("mock_v0", mock_v0)

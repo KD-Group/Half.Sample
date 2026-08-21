@@ -1246,7 +1246,11 @@ class MyTestCase(unittest.TestCase):
         sampler.set_sampler_value("mock_noise", 0)
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "cpp_build") as directory:
             dump_path = Path(directory) / "buffered.csv"
-            sampler.dump(str(dump_path), 3, 100000.0)
+            # Keep this replay-format test on an identifiable buffered waveform.
+            # At 100 kHz the legacy fitting window collapses to 200 points and
+            # includes the square-wave transition, which is correctly rejected
+            # by the fit-identifiability guard.
+            sampler.dump(str(dump_path), 3, 10000.0)
             while sampler.is_measuring:
                 time.sleep(0.01)
             captured = sampler.query()
