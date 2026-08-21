@@ -145,8 +145,23 @@ void publish_process_failure(Error::Code error_code,
 namespace Commander {
 namespace {
 
-std::string last_dump_buffer_hash;
-std::size_t last_dump_buffer_size = 0;
+double diagnostic_request_generation = 0.0;
+std::string diagnostic_operation;
+std::string diagnostic_previous_operation;
+double diagnostic_sample_attempts = 0.0;
+bool diagnostic_sampling_success = false;
+std::string diagnostic_terminal_stage;
+std::string diagnostic_buffer_hash;
+std::string diagnostic_previous_buffer_hash;
+std::string diagnostic_last_dump_buffer_hash;
+double diagnostic_buffer_size = 0.0;
+double diagnostic_previous_buffer_size = 0.0;
+double diagnostic_last_dump_buffer_size = 0.0;
+bool diagnostic_matches_previous_buffer = false;
+bool diagnostic_matches_last_dump_buffer = false;
+double diagnostic_raw_minimum = 0.0;
+double diagnostic_raw_maximum = 0.0;
+double diagnostic_raw_span = 0.0;
 
 std::string buffer_hash(const std::vector<double>& values) {
     std::uint64_t hash = 1469598103934665603ULL;
@@ -163,6 +178,50 @@ std::string buffer_hash(const std::vector<double>& values) {
     return text.str();
 }
 
+void begin_acquisition_diagnostic(const std::string& dump_file_path) {
+    diagnostic_request_generation += 1.0;
+    diagnostic_previous_operation = diagnostic_operation;
+    diagnostic_operation = dump_file_path.empty() ? "to_measure" : "to_dump";
+    diagnostic_previous_buffer_hash = diagnostic_buffer_hash;
+    diagnostic_previous_buffer_size = diagnostic_buffer_size;
+    diagnostic_sample_attempts = 0.0;
+    diagnostic_sampling_success = false;
+    diagnostic_terminal_stage = "accepted";
+    diagnostic_buffer_hash.clear();
+    diagnostic_buffer_size = 0.0;
+    diagnostic_matches_previous_buffer = false;
+    diagnostic_matches_last_dump_buffer = false;
+    diagnostic_raw_minimum = 0.0;
+    diagnostic_raw_maximum = 0.0;
+    diagnostic_raw_span = 0.0;
+}
+
+void capture_acquisition_diagnostic(bool sampling_success) {
+    diagnostic_sample_attempts += 1.0;
+    diagnostic_sampling_success = sampling_success;
+    const auto& buffer = Global::result.totalSamplingBuffer;
+    diagnostic_buffer_size = static_cast<double>(buffer.size());
+    diagnostic_buffer_hash = buffer_hash(buffer);
+    if (!buffer.empty()) {
+        const auto limits = std::minmax_element(buffer.begin(), buffer.end());
+        diagnostic_raw_minimum = *limits.first;
+        diagnostic_raw_maximum = *limits.second;
+        diagnostic_raw_span = diagnostic_raw_maximum - diagnostic_raw_minimum;
+    }
+    diagnostic_matches_previous_buffer =
+        !diagnostic_previous_buffer_hash.empty() &&
+        diagnostic_buffer_hash == diagnostic_previous_buffer_hash &&
+        diagnostic_buffer_size == diagnostic_previous_buffer_size;
+    diagnostic_matches_last_dump_buffer =
+        !diagnostic_last_dump_buffer_hash.empty() &&
+        diagnostic_buffer_hash == diagnostic_last_dump_buffer_hash &&
+        diagnostic_buffer_size == diagnostic_last_dump_buffer_size;
+    if (diagnostic_operation == "to_dump" && sampling_success) {
+        diagnostic_last_dump_buffer_hash = diagnostic_buffer_hash;
+        diagnostic_last_dump_buffer_size = diagnostic_buffer_size;
+    }
+}
+
 void emit_query_result(const Config::SamplingConfig& config,
                        const Result::SamplingResult& result,
                        bool measuring) {
@@ -176,6 +235,23 @@ void emit_query_result(const Config::SamplingConfig& config,
     if (measuring) {
         return;
     }
+    Base::variable(diagnostic_request_generation);
+    Base::variable(diagnostic_operation);
+    Base::variable(diagnostic_previous_operation);
+    Base::variable(diagnostic_sample_attempts);
+    Base::variable(diagnostic_sampling_success);
+    Base::variable(diagnostic_terminal_stage);
+    Base::variable(diagnostic_buffer_hash);
+    Base::variable(diagnostic_previous_buffer_hash);
+    Base::variable(diagnostic_last_dump_buffer_hash);
+    Base::variable(diagnostic_buffer_size);
+    Base::variable(diagnostic_previous_buffer_size);
+    Base::variable(diagnostic_last_dump_buffer_size);
+    Base::variable(diagnostic_matches_previous_buffer);
+    Base::variable(diagnostic_matches_last_dump_buffer);
+    Base::variable(diagnostic_raw_minimum);
+    Base::variable(diagnostic_raw_maximum);
+    Base::variable(diagnostic_raw_span);
     std::string error_category = Error::category(result.error_code);
     bool retryable = Error::retryable(result.error_code);
     bool cancelled = result.cancelled || result.error_code == Error::USER_CANCELLED;
@@ -274,34 +350,6 @@ void measure() {
     bool success = false;
     const bool independent_mode = Global::config.waveform_processing_mode == "independent_cycle" &&
                                   !Global::config.is_instant();
-
-    if (!independent_mode) {
-        Global::result.v_inf = 0.0;
-        Global::result.v_inf_valid = false;
-        success = Global::sampler->sample(Global::config, Global::result);
-        if (success && !Global::config.is_instant() &&
-            !Global::config.dump_file_path.empty()) {
-            last_dump_buffer_hash = buffer_hash(Global::result.totalSamplingBuffer);
-            last_dump_buffer_size = Global::result.totalSamplingBuffer.size();
-        }
-        if (success) {
-            Result::SamplingResult pending_result(false);
-            publish_process_result(pending_result, Global::result);
-            success = Processor::align(Global::config, pending_result);
-            if (success) success = Processor::summation(Global::config, pending_result);
-            if (success) success = Processor::estimate(Global::config, pending_result);
-            if (success) {
-                pending_result.success = true;
-                success = Processor::validate_finite_result(Global::config, pending_result);
-            }
-            pending_result.success = success;
-            publish_process_result(Global::result, pending_result);
-        }
-        Global::result.success = success;
-        Global::result.measuring.store(false, std::memory_order_release);
-        return;
-    }
-
     int attempts = 0;
 
     while (true) {
@@ -309,12 +357,24 @@ void measure() {
         Global::result.v_inf = 0.0;
         Global::result.v_inf_valid = false;
         success = Global::sampler->sample(Global::config, Global::result);
-        if (success) success = Processor::align(Global::config, Global::result);
-        if (success) success = Processor::summation(Global::config, Global::result);
-        if (success) success = Processor::estimate(Global::config, Global::result);
+        capture_acquisition_diagnostic(success);
+        diagnostic_terminal_stage = success ? "sample_complete" : "sample_failed";
+        if (success) {
+            success = Processor::align(Global::config, Global::result);
+            diagnostic_terminal_stage = success ? "align_complete" : "align_failed";
+        }
+        if (success) {
+            success = Processor::summation(Global::config, Global::result);
+            diagnostic_terminal_stage = success ? "summation_complete" : "summation_failed";
+        }
+        if (success) {
+            success = Processor::estimate(Global::config, Global::result);
+            diagnostic_terminal_stage = success ? "estimate_complete" : "estimate_failed";
+        }
         if (success) {
             Global::result.success = true;
             success = Processor::validate_finite_result(Global::config, Global::result);
+            diagnostic_terminal_stage = success ? "success" : "validation_failed";
         }
         if (success || !independent_mode || attempts >= 3 ||
             Global::result.error_code != Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT)
@@ -365,6 +425,7 @@ void async_measure(const std::string& dump_file_path) {
         Base::error(Error::NOW_IN_MEASURING);
         return;
     }
+    begin_acquisition_diagnostic(dump_file_path);
     Global::config = requested_config;
     clear_measure_data();
 
@@ -421,14 +482,6 @@ void to_diagnose_current_result() {
         success = Processor::validate_finite_result(config, replay);
     }
     replay.success = success;
-    std::string diagnostic_buffer_hash = buffer_hash(replay.totalSamplingBuffer);
-    std::string diagnostic_last_dump_buffer_hash = last_dump_buffer_hash;
-    double diagnostic_buffer_size = static_cast<double>(replay.totalSamplingBuffer.size());
-    double diagnostic_last_dump_buffer_size = static_cast<double>(last_dump_buffer_size);
-    Base::variable(diagnostic_buffer_hash);
-    Base::variable(diagnostic_last_dump_buffer_hash);
-    Base::variable(diagnostic_buffer_size);
-    Base::variable(diagnostic_last_dump_buffer_size);
     emit_query_result(config, replay, false);
 }
 
