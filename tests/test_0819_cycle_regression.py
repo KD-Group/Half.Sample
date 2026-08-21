@@ -47,6 +47,73 @@ FINITE_SCALARS = (
 )
 
 
+def _build_sample_executable(executable=SAMPLE_EXE):
+    command = ["scons", "-Q", "sample.exe"]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(SOURCE_ROOT),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            errors="replace",
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            "sample.exe build failed with exit {}\nstdout:\n{}\nstderr:\n{}".format(
+                error.returncode, error.output or "", error.stderr or ""
+            )
+        )
+    if not executable.is_file():
+        raise RuntimeError(
+            "sample.exe build succeeded without creating {}\nstdout:\n{}\nstderr:\n{}".format(
+                executable, completed.stdout, completed.stderr
+            )
+        )
+    return executable
+
+
+def test_build_sample_executable_runs_scons_with_python36_compatible_io(monkeypatch, tmp_path):
+    built_executable = tmp_path / "sample.exe"
+    built_executable.touch()
+    observed = {}
+
+    def run(command, **kwargs):
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, stdout="build stdout", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert _build_sample_executable(built_executable) == built_executable
+    assert observed["command"] == ["scons", "-Q", "sample.exe"]
+    assert observed["kwargs"] == {
+        "cwd": str(SOURCE_ROOT),
+        "check": True,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "universal_newlines": True,
+        "errors": "replace",
+    }
+
+
+def test_build_sample_executable_reports_scons_output(monkeypatch, tmp_path):
+    def run(command, **kwargs):
+        del kwargs
+        raise subprocess.CalledProcessError(
+            2, command, output="build stdout", stderr="build stderr"
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    with pytest.raises(RuntimeError) as raised:
+        _build_sample_executable(tmp_path / "sample.exe")
+
+    assert "build stdout" in str(raised.value)
+    assert "build stderr" in str(raised.value)
+
+
 @pytest.fixture(scope="module")
 def regression_dir():
     configured = os.environ.get("HALF_SAMPLE_0819_REGRESSION_DIR")
@@ -59,8 +126,7 @@ def regression_dir():
 @pytest.fixture(scope="module")
 def sample_executable(regression_dir):
     del regression_dir
-    assert SAMPLE_EXE.is_file(), "build the current source with: scons -Q sample.exe"
-    return SAMPLE_EXE
+    return _build_sample_executable()
 
 
 def _split_protocol_responses(stdout):
@@ -92,9 +158,10 @@ def _run_protocol_case(executable, directory, case_number, waveforms):
     completed = subprocess.run(
         [str(executable)],
         input=commands,
-        text=True,
         cwd=str(directory),
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
         timeout=180,
         check=False,
     )
