@@ -274,10 +274,8 @@ void measure() {
     bool success = false;
     const bool independent_mode = Global::config.waveform_processing_mode == "independent_cycle" &&
                                   !Global::config.is_instant();
-    int attempts = 0;
 
-    while (true) {
-        ++attempts;
+    if (!independent_mode) {
         Global::result.v_inf = 0.0;
         Global::result.v_inf_valid = false;
         success = Global::sampler->sample(Global::config, Global::result);
@@ -286,6 +284,31 @@ void measure() {
             last_dump_buffer_hash = buffer_hash(Global::result.totalSamplingBuffer);
             last_dump_buffer_size = Global::result.totalSamplingBuffer.size();
         }
+        if (success) {
+            Result::SamplingResult pending_result(false);
+            publish_process_result(pending_result, Global::result);
+            success = Processor::align(Global::config, pending_result);
+            if (success) success = Processor::summation(Global::config, pending_result);
+            if (success) success = Processor::estimate(Global::config, pending_result);
+            if (success) {
+                pending_result.success = true;
+                success = Processor::validate_finite_result(Global::config, pending_result);
+            }
+            pending_result.success = success;
+            publish_process_result(Global::result, pending_result);
+        }
+        Global::result.success = success;
+        Global::result.measuring.store(false, std::memory_order_release);
+        return;
+    }
+
+    int attempts = 0;
+
+    while (true) {
+        ++attempts;
+        Global::result.v_inf = 0.0;
+        Global::result.v_inf_valid = false;
+        success = Global::sampler->sample(Global::config, Global::result);
         if (success) success = Processor::align(Global::config, Global::result);
         if (success) success = Processor::summation(Global::config, Global::result);
         if (success) success = Processor::estimate(Global::config, Global::result);
