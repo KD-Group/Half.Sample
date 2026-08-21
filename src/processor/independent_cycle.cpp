@@ -219,6 +219,11 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
 
         double baseline = mean_window(samples, anchor - Constant::CroppedLength,
                                        anchor - Constant::CroppedLength / 2);
+        if (!std::isfinite(baseline)) {
+            ++result.rejected_baseline_cycles;
+            anchor = end;
+            continue;
+        }
         std::vector<double> cycle(static_cast<std::size_t>(waveform_length));
         for (int point = 0; point < waveform_length; ++point) {
             const double source_position = static_cast<double>(point) * static_cast<double>(source_length - 1) /

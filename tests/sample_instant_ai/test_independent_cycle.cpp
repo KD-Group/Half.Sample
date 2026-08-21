@@ -211,6 +211,31 @@ void test_independent_cycle_skips_non_finite_cycle_and_finds_later_cycle() {
     assert(std::fabs(result.cycle_vpps[0] - 2.0) < 1e-9);
 }
 
+void test_independent_cycle_rejects_non_finite_baseline_and_finds_later_cycle() {
+    std::vector<double> samples(3'500, 1.0);
+    for (const int rising_edge : {500, 1'500, 2'500}) {
+        for (int point = rising_edge; point < rising_edge + 400; ++point)
+            samples[static_cast<std::size_t>(point)] = 3.0;
+    }
+    samples[250] = std::numeric_limits<double>::quiet_NaN();
+
+    const auto result = Commander::Processor::extract_independent_cycles(
+        samples, 1'000, 1.0, 1);
+
+    assert(result.success);
+    assert(result.candidate_waveforms == 3);
+    assert(result.accepted_waveforms == 1);
+    assert(result.rejected_baseline_cycles == 1);
+    assert(result.rejected_amplitude_cycles == 0);
+    assert(result.cycles.size() == 1);
+    assert(std::all_of(result.cycles[0].begin(), result.cycles[0].end(), [](double sample) {
+        return std::isfinite(sample);
+    }));
+    assert(std::fabs(result.cycle_vmaxs[0] - 3.0) < 1e-9);
+    assert(std::fabs(result.cycle_vmins[0] - 1.0) < 1e-9);
+    assert(std::fabs(result.cycle_vpps[0] - 2.0) < 1e-9);
+}
+
 void test_independent_cycle_uses_linear_interpolated_p90_p10() {
     std::vector<double> samples(3'500, 0.0);
     for (const int rising_edge : {500, 1'500, 2'500}) {
