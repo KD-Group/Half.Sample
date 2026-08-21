@@ -2,6 +2,7 @@
 #include <cmath>
 #include <algorithm>
 #include <iterator>
+#include <numeric>
 #include "processor.hpp"
 #include "independent_cycle.hpp"
 #include "../constant.hpp"
@@ -45,6 +46,11 @@ bool fit_is_identifiable(const Waveform& wave, const Estimate::EstimatedResult& 
     return true;
 }
 
+double mean_first(const std::vector<double>& values, int count) {
+    return std::accumulate(values.begin(), values.begin() + count, 0.0) /
+           static_cast<double>(count);
+}
+
 } // namespace
 
 bool validate_finite_result(const Config::SamplingConfig& config, Result::SamplingResult& result) {
@@ -59,6 +65,9 @@ bool validate_finite_result(const Config::SamplingConfig& config, Result::Sampli
     const Estimate::EstimatedResult& estimate = result.estimate;
     const bool finite_scalars = result.v_inf_valid && result.v_inf > 0.0 &&
                                 std::isfinite(result.maximum) && std::isfinite(result.minimum) &&
+                                std::isfinite(result.cycle_vmax) && std::isfinite(result.cycle_vmin) &&
+                                std::isfinite(result.cycle_vpp) && std::isfinite(result.cycle_vtop) &&
+                                std::isfinite(result.cycle_vbase) &&
                                 std::isfinite(result.cycle_maximum) && std::isfinite(result.cycle_minimum) &&
                                 std::isfinite(result.v_inf) &&
                                 std::isfinite(config.sampling_interval) &&
@@ -76,6 +85,11 @@ bool validate_finite_result(const Config::SamplingConfig& config, Result::Sampli
     result.error_code = Error::SAMPLING_RESULT_NOT_FINITE;
     result.maximum = 0.0;
     result.minimum = 0.0;
+    result.cycle_vmax = 0.0;
+    result.cycle_vmin = 0.0;
+    result.cycle_vpp = 0.0;
+    result.cycle_vtop = 0.0;
+    result.cycle_vbase = 0.0;
     result.cycle_maximum = 0.0;
     result.cycle_minimum = 0.0;
     result.v_inf = 0.0;
@@ -219,6 +233,18 @@ bool summation(const Config::SamplingConfig& config, Result::SamplingResult& res
             result.independent_cycle_minimum_accumulator.insert(
                 result.independent_cycle_minimum_accumulator.end(),
                 independent.cycle_minimums.begin(), independent.cycle_minimums.end());
+            result.independent_cycle_vmax_accumulator.insert(
+                result.independent_cycle_vmax_accumulator.end(),
+                independent.cycle_vmaxs.begin(), independent.cycle_vmaxs.end());
+            result.independent_cycle_vmin_accumulator.insert(
+                result.independent_cycle_vmin_accumulator.end(),
+                independent.cycle_vmins.begin(), independent.cycle_vmins.end());
+            result.independent_cycle_vpp_accumulator.insert(
+                result.independent_cycle_vpp_accumulator.end(),
+                independent.cycle_vpps.begin(), independent.cycle_vpps.end());
+            result.independent_cycle_voltage_amplitude_accumulator.insert(
+                result.independent_cycle_voltage_amplitude_accumulator.end(),
+                independent.voltage_amplitudes.begin(), independent.voltage_amplitudes.end());
         }
         result.complete_waveforms = static_cast<int>(result.independent_cycle_accumulator.size());
         if (result.independent_cycle_accumulator.size() < static_cast<std::size_t>(config.number_of_waveforms)) {
@@ -226,15 +252,21 @@ bool summation(const Config::SamplingConfig& config, Result::SamplingResult& res
             return false;
         }
 
-        double maximum_sum = 0.0;
-        double minimum_sum = 0.0;
-        for (int cycle = 0; cycle < config.number_of_waveforms; ++cycle) {
-            maximum_sum += result.independent_cycle_maximum_accumulator[static_cast<std::size_t>(cycle)];
-            minimum_sum += result.independent_cycle_minimum_accumulator[static_cast<std::size_t>(cycle)];
-        }
-        result.cycle_maximum = maximum_sum / static_cast<double>(config.number_of_waveforms);
-        result.cycle_minimum = minimum_sum / static_cast<double>(config.number_of_waveforms);
-        if (!record_voltage(result, result.cycle_maximum - result.cycle_minimum)) {
+        result.cycle_vmax = mean_first(result.independent_cycle_vmax_accumulator,
+                                       config.number_of_waveforms);
+        result.cycle_vmin = mean_first(result.independent_cycle_vmin_accumulator,
+                                       config.number_of_waveforms);
+        result.cycle_vpp = mean_first(result.independent_cycle_vpp_accumulator,
+                                      config.number_of_waveforms);
+        result.cycle_vtop = mean_first(result.independent_cycle_maximum_accumulator,
+                                       config.number_of_waveforms);
+        result.cycle_vbase = mean_first(result.independent_cycle_minimum_accumulator,
+                                        config.number_of_waveforms);
+        result.cycle_maximum = result.cycle_vtop;
+        result.cycle_minimum = result.cycle_vbase;
+        if (!record_voltage(result,
+                            mean_first(result.independent_cycle_voltage_amplitude_accumulator,
+                                       config.number_of_waveforms))) {
             result.error_code = Error::SAMPLING_RESULT_NOT_FINITE;
             return false;
         }

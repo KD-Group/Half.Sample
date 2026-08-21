@@ -142,6 +142,10 @@ void reset_loaded_result(Result::SamplingResult& result, const Config::SamplingC
     result.instant_ai_actual_duration_seconds = 0.0;
     result.instant_ai_late_reads = 0;
     result.instant_ai_interpolated_bins = 0;
+    result.independent_cycle_vmax_accumulator.clear();
+    result.independent_cycle_vmin_accumulator.clear();
+    result.independent_cycle_vpp_accumulator.clear();
+    result.independent_cycle_voltage_amplitude_accumulator.clear();
     result.cancelled = false;
     result.progress.reset(config.is_instant() ? config.instant_ai_planned_duration_seconds : 0.0,
                           config.is_instant() ? config.number_of_waveforms + 1 : 0);
@@ -149,6 +153,11 @@ void reset_loaded_result(Result::SamplingResult& result, const Config::SamplingC
     result.error_code = Error::SUCCESS;
     result.maximum = 0.0;
     result.minimum = 0.0;
+    result.cycle_vmax = 0.0;
+    result.cycle_vmin = 0.0;
+    result.cycle_vpp = 0.0;
+    result.cycle_vtop = 0.0;
+    result.cycle_vbase = 0.0;
     result.cycle_maximum = 0.0;
     result.cycle_minimum = 0.0;
     result.v_inf = 0.0;

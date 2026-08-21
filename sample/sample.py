@@ -205,7 +205,8 @@ class Sampler:
     @staticmethod
     def _first_non_finite_field(result: Result):
         for field in ("maximum", "minimum", "sampling_interval", "wave_interval", "tau", "w", "b", "loss",
-                      "v_inf", "cycle_maximum", "cycle_minimum"):
+                      "v_inf", "cycle_maximum", "cycle_minimum", "cycle_vmax", "cycle_vmin", "cycle_vpp",
+                      "cycle_vtop", "cycle_vbase"):
             if not math.isfinite(getattr(result, field)):
                 return field
         for index, value in enumerate(result.wave):

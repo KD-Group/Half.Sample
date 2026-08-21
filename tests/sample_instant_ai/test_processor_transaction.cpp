@@ -50,11 +50,18 @@ void assert_non_finite_result_is_rejected(double Result::SamplingResult::* field
     result.estimate.b = 1.0;
     result.estimate.loss = 0.0;
     result.estimate.y.reset(new Vector(1, 1.0));
+    result.v_inf = 1.0;
+    result.v_inf_valid = true;
     result.*field = value;
 
     assert(!Commander::Processor::validate_finite_result(config, result));
     assert(!result.success);
     assert(result.error_code == Error::SAMPLING_RESULT_NOT_FINITE);
+    assert(result.cycle_vmax == 0.0);
+    assert(result.cycle_vmin == 0.0);
+    assert(result.cycle_vpp == 0.0);
+    assert(result.cycle_vtop == 0.0);
+    assert(result.cycle_vbase == 0.0);
     assert(!result.estimate.y);
 }
 
@@ -95,6 +102,11 @@ void test_processor_transaction() {
         assert_non_finite_result_is_rejected(&Result::SamplingResult::minimum, value);
         assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_maximum, value);
         assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_minimum, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_vmax, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_vmin, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_vpp, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_vtop, value);
+        assert_non_finite_result_is_rejected(&Result::SamplingResult::cycle_vbase, value);
         assert_non_finite_result_is_rejected(&Result::SamplingResult::v_inf, value);
         assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::interval, value);
         assert_non_finite_estimate_is_rejected(&Estimate::EstimatedResult::tau, value);
@@ -134,8 +146,18 @@ void test_processor_transaction() {
     preserved_error.success = false;
     preserved_error.error_code = Error::FIT_NOT_IDENTIFIABLE;
     preserved_error.maximum = std::numeric_limits<double>::infinity();
+    preserved_error.cycle_vmax = 3.2;
+    preserved_error.cycle_vmin = 0.8;
+    preserved_error.cycle_vpp = 2.4;
+    preserved_error.cycle_vtop = 3.0;
+    preserved_error.cycle_vbase = 1.0;
     assert(!Commander::Processor::validate_finite_result(preserved_config, preserved_error));
     assert(preserved_error.error_code == Error::FIT_NOT_IDENTIFIABLE);
+    assert(preserved_error.cycle_vmax == 3.2);
+    assert(preserved_error.cycle_vmin == 0.8);
+    assert(preserved_error.cycle_vpp == 2.4);
+    assert(preserved_error.cycle_vtop == 3.0);
+    assert(preserved_error.cycle_vbase == 1.0);
 
     Result::SamplingResult invalid_voltage(false);
     invalid_voltage.v_inf = std::numeric_limits<double>::infinity();
@@ -163,12 +185,22 @@ void test_processor_transaction() {
     assert(failed_fit_config.update(1, 50.0, 0.0, 100, 10.0, "independent_cycle"));
     Result::SamplingResult failed_fit(false);
     failed_fit.resultWave.assign(static_cast<std::size_t>(failed_fit_config.valid_length), 1.0);
+    failed_fit.cycle_vmax = 3.2;
+    failed_fit.cycle_vmin = 0.8;
+    failed_fit.cycle_vpp = 2.4;
+    failed_fit.cycle_vtop = 3.0;
+    failed_fit.cycle_vbase = 1.0;
     failed_fit.v_inf = 2.0;
     failed_fit.v_inf_valid = true;
     assert(!Commander::Processor::estimate(failed_fit_config, failed_fit));
     assert(failed_fit.error_code == Error::FIT_NOT_IDENTIFIABLE);
     assert(failed_fit.v_inf == 2.0);
     assert(failed_fit.v_inf_valid);
+    assert(failed_fit.cycle_vmax == 3.2);
+    assert(failed_fit.cycle_vmin == 0.8);
+    assert(failed_fit.cycle_vpp == 2.4);
+    assert(failed_fit.cycle_vtop == 3.0);
+    assert(failed_fit.cycle_vbase == 1.0);
 
     const Sampler::SamplerPtr original_sampler = Global::sampler;
     const Config::SamplingConfig original_config = Global::config;

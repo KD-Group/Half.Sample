@@ -85,9 +85,22 @@ void publish_process_result(Result::SamplingResult& destination, Result::Samplin
         std::move(source.independent_cycle_maximum_accumulator);
     destination.independent_cycle_minimum_accumulator =
         std::move(source.independent_cycle_minimum_accumulator);
+    destination.independent_cycle_vmax_accumulator =
+        std::move(source.independent_cycle_vmax_accumulator);
+    destination.independent_cycle_vmin_accumulator =
+        std::move(source.independent_cycle_vmin_accumulator);
+    destination.independent_cycle_vpp_accumulator =
+        std::move(source.independent_cycle_vpp_accumulator);
+    destination.independent_cycle_voltage_amplitude_accumulator =
+        std::move(source.independent_cycle_voltage_amplitude_accumulator);
     destination.cancelled = source.cancelled;
     destination.maximum = source.maximum;
     destination.minimum = source.minimum;
+    destination.cycle_vmax = source.cycle_vmax;
+    destination.cycle_vmin = source.cycle_vmin;
+    destination.cycle_vpp = source.cycle_vpp;
+    destination.cycle_vtop = source.cycle_vtop;
+    destination.cycle_vbase = source.cycle_vbase;
     destination.cycle_maximum = source.cycle_maximum;
     destination.cycle_minimum = source.cycle_minimum;
     destination.v_inf = source.v_inf;
@@ -110,6 +123,11 @@ void publish_process_failure(Error::Code error_code,
     if (partial_result) {
         result.maximum = partial_result->maximum;
         result.minimum = partial_result->minimum;
+        result.cycle_vmax = partial_result->cycle_vmax;
+        result.cycle_vmin = partial_result->cycle_vmin;
+        result.cycle_vpp = partial_result->cycle_vpp;
+        result.cycle_vtop = partial_result->cycle_vtop;
+        result.cycle_vbase = partial_result->cycle_vbase;
         result.cycle_maximum = partial_result->cycle_maximum;
         result.cycle_minimum = partial_result->cycle_minimum;
         result.v_inf = partial_result->v_inf;
@@ -270,6 +288,16 @@ void to_query() {
     Base::variable(v_inf);
     bool v_inf_valid = Global::result.v_inf_valid;
     Base::variable(v_inf_valid);
+    double cycle_vmax = Global::result.cycle_vmax;
+    double cycle_vmin = Global::result.cycle_vmin;
+    double cycle_vpp = Global::result.cycle_vpp;
+    double cycle_vtop = Global::result.cycle_vtop;
+    double cycle_vbase = Global::result.cycle_vbase;
+    Base::variable(cycle_vmax);
+    Base::variable(cycle_vmin);
+    Base::variable(cycle_vpp);
+    Base::variable(cycle_vtop);
+    Base::variable(cycle_vbase);
 
     if (success) {
         double maximum = Global::result.maximum;
@@ -460,6 +488,10 @@ void clear_measure_data() {
     Global::result.independent_cycle_accumulator.clear();
     Global::result.independent_cycle_maximum_accumulator.clear();
     Global::result.independent_cycle_minimum_accumulator.clear();
+    Global::result.independent_cycle_vmax_accumulator.clear();
+    Global::result.independent_cycle_vmin_accumulator.clear();
+    Global::result.independent_cycle_vpp_accumulator.clear();
+    Global::result.independent_cycle_voltage_amplitude_accumulator.clear();
     Global::result.cancelled = false;
     Global::result.progress.reset(Global::config.is_instant()
                                       ? Global::config.instant_ai_planned_duration_seconds
@@ -468,6 +500,11 @@ void clear_measure_data() {
     Global::result.error_code = Error::SUCCESS;
     Global::result.maximum = 0.0;
     Global::result.minimum = 0.0;
+    Global::result.cycle_vmax = 0.0;
+    Global::result.cycle_vmin = 0.0;
+    Global::result.cycle_vpp = 0.0;
+    Global::result.cycle_vtop = 0.0;
+    Global::result.cycle_vbase = 0.0;
     Global::result.cycle_maximum = 0.0;
     Global::result.cycle_minimum = 0.0;
     Global::result.v_inf = 0.0;

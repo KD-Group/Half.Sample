@@ -1,5 +1,6 @@
 #include "../../src/processor/independent_cycle.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -187,6 +188,53 @@ void test_independent_cycle_uses_cycle_percentiles_for_voltage() {
     }
 }
 
+void test_independent_cycle_skips_non_finite_cycle_and_finds_later_cycle() {
+    std::vector<double> samples(3'500, 1.0);
+    for (const int rising_edge : {500, 1'500, 2'500}) {
+        for (int point = rising_edge; point < rising_edge + 400; ++point)
+            samples[static_cast<std::size_t>(point)] = 3.0;
+    }
+    for (int point = 1'000; point < 1'050; ++point)
+        samples[static_cast<std::size_t>(point)] = std::numeric_limits<double>::infinity();
+
+    const auto result = Commander::Processor::extract_independent_cycles(
+        samples, 1'000, 1.0, 1);
+
+    assert(result.success);
+    assert(result.candidate_waveforms == 3);
+    assert(result.accepted_waveforms == 1);
+    assert(result.rejected_amplitude_cycles == 1);
+    assert(result.rejected_short_periods == 0);
+    assert(result.cycle_vmaxs.size() == 1);
+    assert(std::fabs(result.cycle_vmaxs[0] - 3.0) < 1e-9);
+    assert(std::fabs(result.cycle_vmins[0] - 1.0) < 1e-9);
+    assert(std::fabs(result.cycle_vpps[0] - 2.0) < 1e-9);
+}
+
+void test_independent_cycle_uses_linear_interpolated_p90_p10() {
+    std::vector<double> samples(3'500, 0.0);
+    for (const int rising_edge : {500, 1'500, 2'500}) {
+        for (int point = rising_edge; point < rising_edge + 100; ++point)
+            samples[static_cast<std::size_t>(point)] = 4.0;
+        for (int point = rising_edge + 100; point < rising_edge + 500; ++point)
+            samples[static_cast<std::size_t>(point)] = 3.0;
+        for (int point = rising_edge + 500; point < rising_edge + 900; ++point)
+            samples[static_cast<std::size_t>(point)] = 1.0;
+    }
+
+    const auto result = Commander::Processor::extract_independent_cycles(
+        samples, 1'000, 1.0, 2);
+
+    assert(result.success);
+    assert(result.cycle_maximums.size() == 2);
+    assert(result.cycle_minimums.size() == 2);
+    for (std::size_t cycle = 0; cycle < 2; ++cycle) {
+        assert(std::fabs(result.cycle_maximums[cycle] - 3.1) < 1e-9);
+        assert(std::fabs(result.cycle_minimums[cycle] - 0.9) < 1e-9);
+        assert(std::fabs(result.voltage_amplitudes[cycle] - 2.2) < 1e-9);
+    }
+}
+
 void test_independent_cycle_summation_keeps_acquisition_batches_independent() {
     Config::SamplingConfig config;
     config.sampling_frequency = 1'000;
@@ -211,25 +259,42 @@ void test_independent_cycle_summation_keeps_acquisition_batches_independent() {
     assert(Commander::Processor::summation(config, result));
     assert(result.complete_waveforms == 2);
     assert(result.independent_batches == 2);
+    assert(std::fabs(result.cycle_vmax - 8.0) < 1e-9);
+    assert(std::fabs(result.cycle_vmin - 5.0) < 1e-9);
+    assert(std::fabs(result.cycle_vpp - 3.0) < 1e-9);
+    assert(std::fabs(result.cycle_vtop - 8.0) < 1e-9);
+    assert(std::fabs(result.cycle_vbase - 5.0) < 1e-9);
     assert(std::fabs(result.cycle_maximum - 8.0) < 1e-9);
     assert(std::fabs(result.cycle_minimum - 5.0) < 1e-9);
     assert(std::fabs(result.v_inf - 3.0) < 1e-9);
+    assert(std::fabs(result.cycle_vpp - (result.cycle_vmax - result.cycle_vmin)) < 1e-9);
+    assert(std::fabs(result.v_inf - (result.cycle_vtop - result.cycle_vbase)) < 1e-9);
     assert(result.v_inf_valid);
 }
 
-void test_independent_cycle_stats_do_not_cross_batch_start() {
-    constexpr std::size_t batch_size = 2'500;
-    std::vector<double> samples(batch_size * 2, 1.0);
-    const std::size_t begin = batch_size;
-    for (const int rising_edge : {50, 1'050, 2'050}) {
+void test_independent_cycle_stats_use_only_requested_batch_slice() {
+    constexpr std::size_t begin = 2'500;
+    constexpr std::size_t batch_size = 3'500;
+    constexpr std::size_t end = begin + batch_size;
+    std::vector<double> samples(end + 500, 100.0);
+    std::fill(samples.begin() + static_cast<std::ptrdiff_t>(begin),
+              samples.begin() + static_cast<std::ptrdiff_t>(end), 1.0);
+    for (const int rising_edge : {500, 1'500, 2'500}) {
         for (int point = rising_edge; point < rising_edge + 400; ++point) {
             samples[begin + static_cast<std::size_t>(point)] = 3.0;
         }
     }
 
     const auto result = Commander::Processor::extract_independent_cycles(
-        samples, begin, samples.size(), 1'000, 1.0, 2);
+        samples, begin, end, 1'000, 1.0, 2);
 
-    assert(!result.success);
-    assert(result.accepted_waveforms == 1);
+    assert(result.success);
+    assert(result.accepted_waveforms == 2);
+    for (std::size_t cycle = 0; cycle < 2; ++cycle) {
+        assert(std::fabs(result.cycle_vmaxs[cycle] - 3.0) < 1e-9);
+        assert(std::fabs(result.cycle_vmins[cycle] - 1.0) < 1e-9);
+        assert(std::fabs(result.cycle_vpps[cycle] - 2.0) < 1e-9);
+        assert(std::fabs(result.cycle_maximums[cycle] - 3.0) < 1e-9);
+        assert(std::fabs(result.cycle_minimums[cycle] - 1.0) < 1e-9);
+    }
 }

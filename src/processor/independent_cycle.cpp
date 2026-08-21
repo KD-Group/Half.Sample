@@ -4,20 +4,25 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 
 namespace Commander {
 namespace Processor {
 namespace {
 
-double percentile(const std::vector<double>& values, double fraction) {
-    std::vector<double> sorted(values);
-    std::sort(sorted.begin(), sorted.end());
+double sorted_percentile(const std::vector<double>& sorted, double fraction) {
     const double position = fraction * static_cast<double>(sorted.size() - 1);
     const auto lower = static_cast<std::size_t>(position);
     const auto upper = std::min(lower + 1, sorted.size() - 1);
     const double ratio = position - static_cast<double>(lower);
     return sorted[lower] * (1.0 - ratio) + sorted[upper] * ratio;
+}
+
+double percentile(const std::vector<double>& values, double fraction) {
+    std::vector<double> sorted(values);
+    std::sort(sorted.begin(), sorted.end());
+    return sorted_percentile(sorted, fraction);
 }
 
 double median_window(const std::vector<double>& samples, std::size_t begin, std::size_t end) {
@@ -66,8 +71,10 @@ ConfirmedEdges find_confirmed_edges(const std::vector<double>& samples,
     std::vector<unsigned char> below(sample_count);
     std::vector<unsigned char> above(sample_count);
     for (std::size_t i = 0; i < sample_count; ++i) {
-        below[i] = samples[begin + i] <= lower_bound;
-        above[i] = samples[begin + i] >= upper_bound;
+        const double sample = samples[begin + i];
+        if (!std::isfinite(sample)) continue;
+        below[i] = sample <= lower_bound;
+        above[i] = sample >= upper_bound;
     }
 
     int below_count = 0;
@@ -125,14 +132,19 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
     const int waveform_length = static_cast<int>(std::llround(sampling_frequency / emitting_frequency));
     if (waveform_length <= 0) return result;
 
-    const auto raw_limits = std::minmax_element(
-        samples.begin() + static_cast<std::ptrdiff_t>(begin),
-        samples.begin() + static_cast<std::ptrdiff_t>(end));
-    if (*raw_limits.second - *raw_limits.first < Constant::MinVoltageAmplitude) return result;
-    const double minimum = *raw_limits.first;
-    const double maximum = *raw_limits.second;
+    double minimum = std::numeric_limits<double>::infinity();
+    double maximum = -std::numeric_limits<double>::infinity();
+    std::size_t finite_samples = 0;
+    for (std::size_t i = begin; i < end; ++i) {
+        const double sample = samples[i];
+        if (!std::isfinite(sample)) continue;
+        minimum = std::min(minimum, sample);
+        maximum = std::max(maximum, sample);
+        ++finite_samples;
+    }
+    if (finite_samples < 2) return result;
     const double span = maximum - minimum;
-    if (span <= 0.0) return result;
+    if (!std::isfinite(span) || span < Constant::MinVoltageAmplitude) return result;
 
     const double lower_bound = minimum + span * Constant::LowerBound;
     const double upper_bound = minimum + span * Constant::UpperBound;
@@ -192,12 +204,12 @@ IndependentCycleResult extract_independent_cycles(const std::vector<double>& sam
             continue;
         }
 
-        const auto cycle_limits = std::minmax_element(raw_cycle.begin(), raw_cycle.end());
-        const double cycle_vmin = *cycle_limits.first;
-        const double cycle_vmax = *cycle_limits.second;
+        std::sort(raw_cycle.begin(), raw_cycle.end());
+        const double cycle_vmin = raw_cycle.front();
+        const double cycle_vmax = raw_cycle.back();
         const double cycle_vpp = cycle_vmax - cycle_vmin;
-        const double cycle_maximum = percentile(raw_cycle, 0.90);
-        const double cycle_minimum = percentile(raw_cycle, 0.10);
+        const double cycle_maximum = sorted_percentile(raw_cycle, 0.90);
+        const double cycle_minimum = sorted_percentile(raw_cycle, 0.10);
         const double amplitude = cycle_maximum - cycle_minimum;
         if (!std::isfinite(amplitude) || amplitude <= 0.0) {
             ++result.rejected_amplitude_cycles;

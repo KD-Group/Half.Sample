@@ -122,6 +122,11 @@ class Result:
         self._v_inf_reported = False
         self.cycle_maximum = 0.0
         self.cycle_minimum = 0.0
+        self.cycle_vmax = 0.0
+        self.cycle_vmin = 0.0
+        self.cycle_vpp = 0.0
+        self.cycle_vtop = 0.0
+        self.cycle_vbase = 0.0
 
         self.mock_tau = 0.0
         self.mock_v0 = 0.0

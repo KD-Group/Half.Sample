@@ -95,9 +95,14 @@ struct SamplingResult {
     std::vector<std::vector<double>> independent_cycle_accumulator;
     std::vector<double> independent_cycle_maximum_accumulator;
     std::vector<double> independent_cycle_minimum_accumulator;
+    std::vector<double> independent_cycle_vmax_accumulator;
+    std::vector<double> independent_cycle_vmin_accumulator;
+    std::vector<double> independent_cycle_vpp_accumulator;
+    std::vector<double> independent_cycle_voltage_amplitude_accumulator;
     bool cancelled{};
 
     double maximum{}, minimum{};
+    double cycle_vmax{}, cycle_vmin{}, cycle_vpp{}, cycle_vtop{}, cycle_vbase{};
     double cycle_maximum{}, cycle_minimum{}, v_inf{};
     bool v_inf_valid{};
     Estimate::EstimatedResult estimate;

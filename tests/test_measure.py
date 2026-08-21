@@ -575,6 +575,11 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
             'message="success"',
             "maximum=9.500000",
             "minimum=-2.250000",
+            "cycle_vmax=3.200000",
+            "cycle_vmin=0.800000",
+            "cycle_vpp=2.400000",
+            "cycle_vtop=3.000000",
+            "cycle_vbase=1.000000",
         ))
 
         result = Sampler().communicate("to_query", ResponseExecutor(response))
@@ -583,6 +588,11 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
         self.assertEqual(result.message, "success")
         self.assertEqual(result.maximum, 9.5)
         self.assertEqual(result.minimum, -2.25)
+        self.assertEqual(result.cycle_vmax, 3.2)
+        self.assertEqual(result.cycle_vmin, 0.8)
+        self.assertEqual(result.cycle_vpp, 2.4)
+        self.assertEqual(result.cycle_vtop, 3.0)
+        self.assertEqual(result.cycle_vbase, 1.0)
         source = inspect.getsource(Sampler.communicate)
         self.assertNotIn("exec(", source)
         self.assertNotIn("eval(", source)
@@ -655,7 +665,8 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
 
     def test_query_rejects_each_non_finite_scalar_without_processing(self):
         for field in ("maximum", "minimum", "sampling_interval", "wave_interval", "tau", "w", "b", "loss",
-                      "v_inf", "cycle_maximum", "cycle_minimum"):
+                      "v_inf", "cycle_maximum", "cycle_minimum", "cycle_vmax", "cycle_vmin", "cycle_vpp",
+                      "cycle_vtop", "cycle_vbase"):
             for value in (float("nan"), float("inf"), float("-inf")):
                 with self.subTest(field=field, value=value):
                     result = self._valid_result()
@@ -693,6 +704,7 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
     def test_query_accepts_explicit_valid_voltage_on_failed_fit(self):
         response = "\n".join((
             "success=False", 'message="fit_not_identifiable"', "v_inf=4.2", "v_inf_valid=True",
+            "cycle_vmax=3.2", "cycle_vmin=0.8", "cycle_vpp=2.4", "cycle_vtop=3.0", "cycle_vbase=1.0",
         ))
         client = Sampler()
         client.communicate = lambda command, executor=None: Sampler().communicate(
@@ -704,6 +716,11 @@ class SamplerProtocolIntegrationTest(unittest.TestCase):
         self.assertEqual(queried.message, "fit_not_identifiable")
         self.assertEqual(queried.v_inf, 4.2)
         self.assertTrue(queried.v_inf_valid)
+        self.assertEqual(queried.cycle_vmax, 3.2)
+        self.assertEqual(queried.cycle_vmin, 0.8)
+        self.assertEqual(queried.cycle_vpp, 2.4)
+        self.assertEqual(queried.cycle_vtop, 3.0)
+        self.assertEqual(queried.cycle_vbase, 1.0)
 
     def test_query_rejects_unvalidated_voltage_without_rewriting_failure(self):
         for voltage, validity in ((4.2, False), (0.0, True), (float("nan"), True), (float("inf"), True)):
@@ -830,6 +847,11 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(result.instant_ai_late_reads, 0)
         self.assertEqual(result.instant_ai_interpolated_bins, 0)
         self.assertFalse(result.v_inf_valid)
+        self.assertEqual(result.cycle_vmax, 0.0)
+        self.assertEqual(result.cycle_vmin, 0.0)
+        self.assertEqual(result.cycle_vpp, 0.0)
+        self.assertEqual(result.cycle_vtop, 0.0)
+        self.assertEqual(result.cycle_vbase, 0.0)
 
     def test_result_process_preserves_reported_business_v_inf(self):
         result = Result()

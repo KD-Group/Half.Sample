@@ -220,10 +220,28 @@ void test_dump_format() {
         assert(Sampler::Sampler::dump_origin_data(config, original));
 
         Result::SamplingResult replay(false);
+        replay.independent_cycle_vmax_accumulator.push_back(9.0);
+        replay.independent_cycle_vmin_accumulator.push_back(8.0);
+        replay.independent_cycle_vpp_accumulator.push_back(7.0);
+        replay.independent_cycle_voltage_amplitude_accumulator.push_back(6.0);
+        replay.cycle_vmax = 5.0;
+        replay.cycle_vmin = 4.0;
+        replay.cycle_vpp = 3.0;
+        replay.cycle_vtop = 2.0;
+        replay.cycle_vbase = 1.0;
         replay.v_inf = 9.0;
         replay.v_inf_valid = true;
         assert(Sampler::Sampler::load_origin_data(config, replay));
         assert(replay.totalSamplingBuffer == original.totalSamplingBuffer);
+        assert(replay.independent_cycle_vmax_accumulator.empty());
+        assert(replay.independent_cycle_vmin_accumulator.empty());
+        assert(replay.independent_cycle_vpp_accumulator.empty());
+        assert(replay.independent_cycle_voltage_amplitude_accumulator.empty());
+        assert(replay.cycle_vmax == 0.0);
+        assert(replay.cycle_vmin == 0.0);
+        assert(replay.cycle_vpp == 0.0);
+        assert(replay.cycle_vtop == 0.0);
+        assert(replay.cycle_vbase == 0.0);
         assert(replay.v_inf == 0.0);
         assert(!replay.v_inf_valid);
     }
