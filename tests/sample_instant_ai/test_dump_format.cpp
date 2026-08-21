@@ -1,5 +1,7 @@
 #include "../../src/sampler/mock_sampler.hpp"
+#include "../../src/processor/processor.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -220,6 +222,21 @@ void test_dump_format() {
         assert(Sampler::Sampler::dump_origin_data(config, original));
 
         Result::SamplingResult replay(false);
+        replay.resultWave = {42.0};
+        replay.requested_waveforms = 91;
+        replay.complete_waveforms = 92;
+        replay.discarded_waveforms = 93;
+        replay.independent_batches = 94;
+        replay.independent_retries = 95;
+        replay.rejected_threshold_candidates = 96;
+        replay.rejected_short_periods = 97;
+        replay.rejected_long_periods = 98;
+        replay.rejected_amplitude_cycles = 99;
+        replay.rejected_baseline_cycles = 100;
+        replay.rejected_shape_cycles = 101;
+        replay.independent_cycle_accumulator = {{42.0}, {43.0}};
+        replay.independent_cycle_maximum_accumulator.push_back(11.0);
+        replay.independent_cycle_minimum_accumulator.push_back(10.0);
         replay.independent_cycle_vmax_accumulator.push_back(9.0);
         replay.independent_cycle_vmin_accumulator.push_back(8.0);
         replay.independent_cycle_vpp_accumulator.push_back(7.0);
@@ -233,6 +250,24 @@ void test_dump_format() {
         replay.v_inf_valid = true;
         assert(Sampler::Sampler::load_origin_data(config, replay));
         assert(replay.totalSamplingBuffer == original.totalSamplingBuffer);
+        assert(replay.resultWave.size() == static_cast<std::size_t>(config.valid_length));
+        assert(std::all_of(replay.resultWave.begin(), replay.resultWave.end(), [](double value) {
+            return value == 0.0;
+        }));
+        assert(replay.requested_waveforms == 0);
+        assert(replay.complete_waveforms == 0);
+        assert(replay.discarded_waveforms == 0);
+        assert(replay.independent_batches == 0);
+        assert(replay.independent_retries == 0);
+        assert(replay.rejected_threshold_candidates == 0);
+        assert(replay.rejected_short_periods == 0);
+        assert(replay.rejected_long_periods == 0);
+        assert(replay.rejected_amplitude_cycles == 0);
+        assert(replay.rejected_baseline_cycles == 0);
+        assert(replay.rejected_shape_cycles == 0);
+        assert(replay.independent_cycle_accumulator.empty());
+        assert(replay.independent_cycle_maximum_accumulator.empty());
+        assert(replay.independent_cycle_minimum_accumulator.empty());
         assert(replay.independent_cycle_vmax_accumulator.empty());
         assert(replay.independent_cycle_vmin_accumulator.empty());
         assert(replay.independent_cycle_vpp_accumulator.empty());
@@ -244,6 +279,9 @@ void test_dump_format() {
         assert(replay.cycle_vbase == 0.0);
         assert(replay.v_inf == 0.0);
         assert(!replay.v_inf_valid);
+        assert(Commander::Processor::align(config, replay));
+        assert(!Commander::Processor::summation(config, replay));
+        assert(replay.error_code == Error::INSTANT_AI_WAVEFORM_COUNT_INSUFFICIENT);
     }
 
     {
